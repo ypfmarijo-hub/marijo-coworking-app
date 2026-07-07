@@ -1,0 +1,24 @@
+{
+  "name": "MARIJO - Fullwork Coworking",
+  "short_name": "Fullwork",
+  "description": "Reserva tu espacio de coworking en Fullwork, dentro de la Estación de Servicio MARIJO.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0057a5",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/pwa-icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa-icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
