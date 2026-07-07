@@ -55,8 +55,8 @@ export async function POST(req: NextRequest) {
 
     // Ordenar por hora de inicio y buscar la que está EN CURSO
     const sortedReservations = reservations.sort((a: any, b: any) => {
-      const aStart = a.start_time || a.startTime || '00:00'
-      const bStart = b.start_time || b.startTime || '00:00'
+      const aStart = a.time_from || '00:00'
+      const bStart = b.time_from || '00:00'
       return aStart.localeCompare(bStart)
     })
 
@@ -64,8 +64,8 @@ export async function POST(req: NextRequest) {
     let upcomingReservation = null
 
     for (const res of sortedReservations) {
-      const startTime = res.start_time || res.startTime || '00:00'
-      const endTime = res.end_time || res.endTime || '23:59'
+      const startTime = res.time_from || '00:00'
+      const endTime = res.time_to || '23:59'
       const [startHour, startMin] = startTime.split(':').map(Number)
       const [endHour, endMin] = endTime.split(':').map(Number)
       const startMinutes = startHour * 60 + startMin
@@ -128,29 +128,29 @@ export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json()
     const { order_id, status } = body
-    
+
     console.log('[PATCH /market/orders] Received:', { order_id, status })
-    
+
     if (!order_id || !status) {
       return NextResponse.json({ error: 'order_id y status son requeridos' }, { status: 400 })
     }
 
     const supabase = getServiceSupabase()
-    
+
     // Verificar que la orden existe primero
     const { data: existingOrder, error: findError } = await supabase
       .from('orders')
       .select('id, status')
       .eq('id', order_id)
       .maybeSingle()
-    
+
     console.log('[PATCH /market/orders] Found order:', existingOrder, 'error:', findError)
-    
+
     if (findError || !existingOrder) {
       console.error('[PATCH /market/orders] Order not found:', order_id)
       return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
     }
-    
+
     const { data, error } = await supabase
       .from('orders')
       .update({ status })
@@ -163,7 +163,7 @@ export async function PATCH(req: NextRequest) {
       console.error('[PATCH /market/orders] Update error:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
-    
+
     return NextResponse.json({ success: true, data })
   } catch (e: any) {
     console.error('[PATCH /market/orders] Critical error:', e)
