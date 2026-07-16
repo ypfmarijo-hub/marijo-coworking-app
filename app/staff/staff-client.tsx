@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ChevronLeft, ChevronRight, Clock, User, Building2, CalendarDays, Plus, X, Trash2, AlertTriangle, Paperclip, DollarSign, Bell, ShoppingBag, Volume2, VolumeX } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Clock, User, Building2, CalendarDays, Plus, X, Trash2, AlertTriangle, Paperclip, DollarSign, Bell, ShoppingBag, Volume2, VolumeX, Minus, FileBarChart, Download, Loader2 } from 'lucide-react'
 import { MenuAdminModal } from '@/components/staff/menu-admin-modal'
 import { OrdersSidebar } from '@/components/staff/orders-sidebar'
 
@@ -278,6 +278,279 @@ function CancelModal({ reservation, onClose, onConfirm }: { reservation: Reserva
   )
 }
 
+interface ManualOrderModalProps {
+  reservation: Reservation
+  products: { id: string; name: string; price: number; image_url: string | null }[]
+  onClose: () => void
+  onSubmit: (items: { name: string; price: number; quantity: number; subtotal: number }[]) => Promise<boolean>
+}
+
+function ManualOrderModal({ reservation, products, onClose, onSubmit }: ManualOrderModalProps) {
+  const [quantities, setQuantities] = useState<Record<string, number>>({})
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  const setQty = (id: string, delta: number) => {
+    setQuantities(prev => {
+      const next = Math.max(0, (prev[id] || 0) + delta)
+      return { ...prev, [id]: next }
+    })
+  }
+
+  const selectedItems = products
+    .filter(p => (quantities[p.id] || 0) > 0)
+    .map(p => ({ name: p.name, price: p.price, quantity: quantities[p.id], subtotal: p.price * quantities[p.id] }))
+
+  const total = selectedItems.reduce((acc, i) => acc + i.subtotal, 0)
+
+  const handleSubmit = async () => {
+    if (selectedItems.length === 0) { setError('Elegí al menos un producto'); return }
+    setSubmitting(true)
+    const success = await onSubmit(selectedItems)
+    setSubmitting(false)
+    if (success) onClose()
+    else setError('No se pudo guardar el pedido, intentá de nuevo')
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <Card className="p-6 max-w-md w-full border-0 shadow-2xl max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <ShoppingBag className="w-5 h-5 text-primary" />
+            <h3 className="font-semibold text-foreground">Cargar consumo manual</h3>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground"><X className="w-5 h-5" /></button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          {reservation.firstName} {reservation.lastName} — {WORKSPACE_LABELS[reservation.workspace]}
+        </p>
+
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+          {products.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No hay productos cargados en el Market todavía.</p>
+          ) : products.map(p => (
+            <div key={p.id} className="flex items-center justify-between gap-3 border border-slate-100 rounded-lg px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-foreground truncate">{p.name}</p>
+                <p className="text-xs text-muted-foreground">{formatPrice(p.price)}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setQty(p.id, -1)} className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50">
+                  <Minus className="w-3.5 h-3.5" />
+                </button>
+                <span className="w-5 text-center text-sm font-bold">{quantities[p.id] || 0}</span>
+                <button type="button" onClick={() => setQty(p.id, 1)} className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50">
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {error && <p className="text-xs text-red-600 mt-3">{error}</p>}
+
+        <div className="flex items-center justify-between pt-4 mt-4 border-t border-slate-100">
+          <span className="text-sm font-black text-foreground">Total: {formatPrice(total)}</span>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button type="button" onClick={handleSubmit} disabled={submitting || selectedItems.length === 0}>
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Guardar'}
+            </Button>
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+interface ReportSummary {
+  range: { from: string; to: string }
+  reservations: {
+    total: number; confirmed: number; cancelled: number; revenue: number; totalHours: number
+    bySource: { app: { count: number; hours: number }; staff: { count: number; hours: number } }
+  }
+  market: {
+    orderCount: number; revenue: number
+    bySource: { app: { count: number; revenue: number }; staff: { count: number; revenue: number } }
+    products: { name: string; quantity: number; revenue: number }[]
+  }
+  totalRevenue: number
+  reservationsDetail: {
+    date: string; code: string; workspace: string; deskNumber: number | string
+    timeFrom: string; timeTo: string; hours: number
+    firstName: string; lastName: string; phone: string
+    source: 'app' | 'staff'; status: string
+    espacioRevenue: number; marketConsumption: number; total: number
+  }[]
+}
+
+function ReportModal({ onClose }: { onClose: () => void }) {
+  const todayKey = formatDateKey(new Date())
+  const [from, setFrom] = useState(todayKey)
+  const [to, setTo] = useState(todayKey)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [summary, setSummary] = useState<ReportSummary | null>(null)
+
+  const runReport = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const res = await fetch(`/api/reports/summary?from=${from}&to=${to}`)
+      if (!res.ok) throw new Error('No se pudo generar el informe')
+      const data = await res.json()
+      setSummary(data)
+    } catch (e) {
+      setError('No se pudo generar el informe. Intentá de nuevo.')
+    } finally {
+      setLoading(false)
+    }
+  }, [from, to])
+
+  useEffect(() => { runReport() }, [])
+
+  const downloadCsv = () => {
+    if (!summary) return
+    const esc = (v: string | number) => {
+      const s = String(v)
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+    }
+    const lines: string[] = []
+    lines.push(`Informe Fullwork,${summary.range.from} a ${summary.range.to}`)
+    lines.push('')
+    lines.push('RESERVAS')
+    lines.push('Total,Confirmadas,Canceladas,Reservas App,Horas App,Reservas Staff,Horas Staff,Horas Totales,Facturado Espacios')
+    lines.push(`${summary.reservations.total},${summary.reservations.confirmed},${summary.reservations.cancelled},${summary.reservations.bySource.app.count},${summary.reservations.bySource.app.hours},${summary.reservations.bySource.staff.count},${summary.reservations.bySource.staff.hours},${summary.reservations.totalHours},${summary.reservations.revenue}`)
+    lines.push('')
+    lines.push('MARKET')
+    lines.push('Pedidos,Pedidos App,Facturado App,Pedidos Staff,Facturado Staff,Facturado Market')
+    lines.push(`${summary.market.orderCount},${summary.market.bySource.app.count},${summary.market.bySource.app.revenue},${summary.market.bySource.staff.count},${summary.market.bySource.staff.revenue},${summary.market.revenue}`)
+    lines.push('')
+    lines.push('PRODUCTOS')
+    lines.push('Producto,Cantidad,Total')
+    summary.market.products.forEach(p => lines.push(`${esc(p.name)},${p.quantity},${p.revenue}`))
+    lines.push('')
+    lines.push(`Total General,,${summary.totalRevenue}`)
+    lines.push('')
+    lines.push('DETALLE DE RESERVAS')
+    lines.push('Fecha,Código,Espacio,N° Escritorio,Desde,Hasta,Horas,Nombre,Apellido,Teléfono,Origen,Estado,Facturado Espacio,Consumo Market,Total')
+    summary.reservationsDetail.forEach(r => {
+      const workspaceLabel = WORKSPACE_LABELS[r.workspace as WorkspaceType] || r.workspace
+      const origen = r.source === 'app' ? 'App' : 'Staff'
+      const estado = r.status === 'confirmed' ? 'Confirmada' : r.status === 'cancelled' ? 'Cancelada' : r.status
+      lines.push([
+        r.date, esc(r.code), esc(workspaceLabel), r.deskNumber, r.timeFrom, r.timeTo, r.hours,
+        esc(r.firstName), esc(r.lastName), esc(r.phone), origen, estado,
+        r.espacioRevenue, r.marketConsumption, r.total,
+      ].join(','))
+    })
+
+    const csv = lines.join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `informe-fullwork-${summary.range.from}-a-${summary.range.to}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <Card className="p-6 max-w-lg w-full border-0 shadow-2xl max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <FileBarChart className="w-5 h-5 text-primary" />
+            <h3 className="font-semibold text-foreground">Informe de reservas y Market</h3>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Desde</label>
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-full h-10 px-3 text-sm border border-input rounded-md bg-background text-foreground" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Hasta</label>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-full h-10 px-3 text-sm border border-input rounded-md bg-background text-foreground" />
+          </div>
+        </div>
+
+        <Button type="button" onClick={runReport} disabled={loading} className="mb-4">
+          {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+          Generar informe
+        </Button>
+
+        {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
+
+        {summary && !loading && (
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Reservas</p>
+                <p className="text-2xl font-black text-[#0057a5]">{summary.reservations.total}</p>
+                <p className="text-[10px] text-slate-500 mt-1">{summary.reservations.confirmed} confirmadas · {summary.reservations.cancelled} canceladas</p>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Pedidos Market</p>
+                <p className="text-2xl font-black text-[#0057a5]">{summary.market.orderCount}</p>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Pedidos App / Staff</p>
+                <p className="text-lg font-black text-foreground">{summary.market.bySource.app.count} <span className="text-[10px] font-normal text-slate-400">app</span> · {summary.market.bySource.staff.count} <span className="text-[10px] font-normal text-slate-400">staff</span></p>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Reservas por App / Staff</p>
+                <p className="text-lg font-black text-foreground">{summary.reservations.bySource.app.count} <span className="text-[10px] font-normal text-slate-400">app</span> · {summary.reservations.bySource.staff.count} <span className="text-[10px] font-normal text-slate-400">staff</span></p>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Horas Reservadas</p>
+                <p className="text-lg font-black text-foreground">{summary.reservations.totalHours.toLocaleString('es-AR', { maximumFractionDigits: 1 })} hs</p>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Facturado Espacios</p>
+                <p className="text-lg font-black text-foreground">{formatPrice(summary.reservations.revenue)}</p>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Facturado Market</p>
+                <p className="text-lg font-black text-foreground">{formatPrice(summary.market.revenue)}</p>
+              </div>
+            </div>
+
+            <div className="bg-[#0057a5]/5 rounded-xl p-3 border border-[#0057a5]/10 flex items-center justify-between">
+              <span className="text-xs font-black uppercase tracking-widest text-[#0057a5]">Total General</span>
+              <span className="text-xl font-black text-[#0057a5]">{formatPrice(summary.totalRevenue)}</span>
+            </div>
+
+            <div>
+              <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Productos consumidos</p>
+              {summary.market.products.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Sin consumo de Market en este rango.</p>
+              ) : (
+                <div className="space-y-1">
+                  {summary.market.products.map(p => (
+                    <div key={p.name} className="flex justify-between items-center text-xs border-b border-slate-100 py-1.5">
+                      <span className="text-slate-700">{p.quantity}x {p.name}</span>
+                      <span className="font-semibold text-slate-800">{formatPrice(p.revenue)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Button type="button" variant="outline" onClick={downloadCsv} className="w-full">
+              <Download className="w-4 h-4 mr-2" /> Descargar Excel (CSV)
+            </Button>
+          </div>
+        )}
+      </Card>
+    </div>
+  )
+}
+
 export function StaffPageClient() {
   const [isMounted, setIsMounted] = useState(false)
   
@@ -292,6 +565,8 @@ export function StaffPageClient() {
   const [toasts, setToasts] = useState<{ id: string; code: string }[]>([]);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | 'unsupported'>('default')
   const [marketProducts, setMarketProducts] = useState<{ id: string; name: string; price: number; image_url: string | null }[]>([])
+  const [manualOrderTarget, setManualOrderTarget] = useState<Reservation | null>(null)
+  const [showReportModal, setShowReportModal] = useState(false)
 
   const [allOrders, setAllOrders] = useState<any[]>([])
 
@@ -353,6 +628,26 @@ export function StaffPageClient() {
     // Polling cada 5 segundos para mantener actualizado
     const interval = setInterval(loadOrders, 5000)
     return () => clearInterval(interval)
+  }, [loadOrders])
+
+  const submitManualOrder = useCallback(async (reservation: Reservation, items: { name: string; price: number; quantity: number; subtotal: number }[]): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/market/orders/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reservation_id: reservation.id,
+          customer_name: `${reservation.firstName} ${reservation.lastName}`.trim(),
+          items,
+        }),
+      })
+      if (!res.ok) return false
+      await loadOrders()
+      return true
+    } catch (error) {
+      console.error('[StaffClient] submitManualOrder error:', error)
+      return false
+    }
   }, [loadOrders])
 
   const loadForDate = useCallback(async (date: Date, silent = false) => { 
@@ -467,6 +762,19 @@ export function StaffPageClient() {
         />
       )}
 
+      {manualOrderTarget && (
+        <ManualOrderModal
+          reservation={manualOrderTarget}
+          products={marketProducts}
+          onClose={() => setManualOrderTarget(null)}
+          onSubmit={(items) => submitManualOrder(manualOrderTarget, items)}
+        />
+      )}
+
+      {showReportModal && (
+        <ReportModal onClose={() => setShowReportModal(false)} />
+      )}
+
       <header className="bg-[#0057a5] text-white sticky top-0 z-20 shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -511,6 +819,14 @@ export function StaffPageClient() {
             </div>
 
             <div className="w-px h-6 bg-white/20 mx-1" />
+            <Button
+              onClick={() => setShowReportModal(true)}
+              className="bg-[#0057a5] hover:bg-[#004080] text-white font-semibold gap-2 border border-white/20"
+            >
+              <Plus className="w-4 h-4" />
+              INFORME
+            </Button>
+
             <MenuAdminModal products={marketProducts} onProductAdded={loadMarketProducts} onProductDeleted={loadMarketProducts} />
           </div>
         </div>
@@ -672,11 +988,24 @@ export function StaffPageClient() {
                             Finalizar
                           </Button>
                         )}
-                        {!isCancelled && (
-                          <Button size="icon" variant="ghost" className="text-slate-300 hover:text-red-500 transition-colors h-8 w-8" onClick={() => setCancelTarget(r)}>
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        )}
+                        <div className="flex items-center justify-end gap-1">
+                          {!isCancelled && (
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              title="Cargar consumo manual (WhatsApp / mostrador)"
+                              className="text-[#0057a5] border-[#0057a5]/30 h-8 w-8"
+                              onClick={() => setManualOrderTarget(r)}
+                            >
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                          )}
+                          {!isCancelled && (
+                            <Button size="icon" variant="ghost" className="text-slate-300 hover:text-red-500 transition-colors h-8 w-8" onClick={() => setCancelTarget(r)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </Card>
@@ -778,4 +1107,3 @@ export function StaffPageClient() {
     </div>
   )
 }
-
