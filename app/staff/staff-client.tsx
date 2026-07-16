@@ -568,8 +568,6 @@ export function StaffPageClient() {
                 const pagadoApp = isPresencial ? 0 : Math.round(reservationPrice * 0.5);
 
                 const saldoEspacioBase = reservationPrice - pagadoApp;
-                const saldoEspacioFinal = marketConsumption >= saldoEspacioBase ? 0 : (saldoEspacioBase - marketConsumption);
-                const saldoPendiente = Math.max(0, saldoEspacioFinal + marketConsumption);
 
                 return (
                   <Card key={r.id} className={`p-5 shadow-md border-none transition-all duration-500 ${isCancelled ? 'opacity-50 bg-slate-100' : isAlerted ? 'bg-orange-50 ring-2 ring-orange-500 animate-pulse' : 'bg-white ring-1 ring-slate-100'}`}>
@@ -610,7 +608,7 @@ export function StaffPageClient() {
                             )}
 
                             <div className="col-span-2 pt-2 mt-1 border-t border-slate-200 flex justify-between text-[11px] text-slate-900 font-black">
-                              <span>SALDO A COBRAR:</span>
+                              <span>SALDO A COBRAR (ESPACIO):</span>
                               <span className="text-[#0057a5] text-sm font-black">{formatPrice(saldoEspacioBase)}</span>
                             </div>
 
