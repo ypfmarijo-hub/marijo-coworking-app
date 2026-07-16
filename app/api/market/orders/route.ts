@@ -36,9 +36,14 @@ export async function POST(req: NextRequest) {
 
     const supabase = getServiceSupabase()
     const cleanPhone = String(phone).replace(/\D/g, '')
-    const today = new Date().toISOString().split('T')[0]
-    const now = new Date()
-    const currentTimeMinutes = now.getHours() * 60 + now.getMinutes()
+
+    // Vercel corre en UTC; convertimos a hora de Argentina (UTC-3, sin horario de verano)
+    // para que la comparación de horarios de reserva sea correcta.
+    const nowArg = new Date(
+      new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' })
+    )
+    const today = `${nowArg.getFullYear()}-${String(nowArg.getMonth() + 1).padStart(2, '0')}-${String(nowArg.getDate()).padStart(2, '0')}`
+    const currentTimeMinutes = nowArg.getHours() * 60 + nowArg.getMinutes()
     const TOLERANCE_MINUTES = 15
 
     // Buscar TODAS las reservas confirmadas de hoy para este teléfono
@@ -128,29 +133,29 @@ export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json()
     const { order_id, status } = body
-
+    
     console.log('[PATCH /market/orders] Received:', { order_id, status })
-
+    
     if (!order_id || !status) {
       return NextResponse.json({ error: 'order_id y status son requeridos' }, { status: 400 })
     }
 
     const supabase = getServiceSupabase()
-
+    
     // Verificar que la orden existe primero
     const { data: existingOrder, error: findError } = await supabase
       .from('orders')
       .select('id, status')
       .eq('id', order_id)
       .maybeSingle()
-
+    
     console.log('[PATCH /market/orders] Found order:', existingOrder, 'error:', findError)
-
+    
     if (findError || !existingOrder) {
       console.error('[PATCH /market/orders] Order not found:', order_id)
       return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
     }
-
+    
     const { data, error } = await supabase
       .from('orders')
       .update({ status })
@@ -163,7 +168,7 @@ export async function PATCH(req: NextRequest) {
       console.error('[PATCH /market/orders] Update error:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
-
+    
     return NextResponse.json({ success: true, data })
   } catch (e: any) {
     console.error('[PATCH /market/orders] Critical error:', e)
