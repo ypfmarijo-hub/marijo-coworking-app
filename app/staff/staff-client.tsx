@@ -409,48 +409,70 @@ function ReportModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => { runReport() }, [])
 
-  const downloadCsv = () => {
+  const downloadExcel = () => {
     if (!summary) return
-    const esc = (v: string | number) => {
-      const s = String(v)
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-    }
-    const lines: string[] = []
-    lines.push(`Informe Fullwork,${summary.range.from} a ${summary.range.to}`)
-    lines.push('')
-    lines.push('RESERVAS')
-    lines.push('Total,Confirmadas,Canceladas,Reservas App,Horas App,Reservas Staff,Horas Staff,Horas Totales,Facturado Espacios')
-    lines.push(`${summary.reservations.total},${summary.reservations.confirmed},${summary.reservations.cancelled},${summary.reservations.bySource.app.count},${summary.reservations.bySource.app.hours},${summary.reservations.bySource.staff.count},${summary.reservations.bySource.staff.hours},${summary.reservations.totalHours},${summary.reservations.revenue}`)
-    lines.push('')
-    lines.push('MARKET')
-    lines.push('Pedidos,Pedidos App,Facturado App,Pedidos Staff,Facturado Staff,Facturado Market')
-    lines.push(`${summary.market.orderCount},${summary.market.bySource.app.count},${summary.market.bySource.app.revenue},${summary.market.bySource.staff.count},${summary.market.bySource.staff.revenue},${summary.market.revenue}`)
-    lines.push('')
-    lines.push('PRODUCTOS')
-    lines.push('Producto,Cantidad,Total')
-    summary.market.products.forEach(p => lines.push(`${esc(p.name)},${p.quantity},${p.revenue}`))
-    lines.push('')
-    lines.push(`Total General,,${summary.totalRevenue}`)
-    lines.push('')
-    lines.push('DETALLE DE RESERVAS')
-    lines.push('Fecha,Código,Espacio,N° Escritorio,Desde,Hasta,Horas,Nombre,Apellido,Teléfono,Origen,Estado,Facturado Espacio,Consumo Market,Total')
+    const escHtml = (v: string | number) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+    const section = (title: string) =>
+      `<tr><td colspan="15" style="background:#0057a5;color:#ffffff;font-weight:bold;font-size:13px;padding:8px;">${escHtml(title)}</td></tr>`
+
+    const headerRow = (cells: string[]) =>
+      `<tr>${cells.map(c => `<th style="background:#eef3f8;border:1px solid #cfd8e3;padding:5px 10px;font-size:11px;text-align:left;white-space:nowrap;">${escHtml(c)}</th>`).join('')}</tr>`
+
+    const dataRow = (cells: (string | number)[]) =>
+      `<tr>${cells.map(c => `<td style="border:1px solid #e2e8f0;padding:5px 10px;font-size:11px;white-space:nowrap;">${escHtml(c)}</td>`).join('')}</tr>`
+
+    const blankRow = `<tr><td colspan="15" style="padding:4px;">&nbsp;</td></tr>`
+
+    let rows = ''
+    rows += `<tr><td colspan="15" style="font-size:18px;font-weight:bold;padding:10px;">Informe Fullwork — ${escHtml(summary.range.from)} a ${escHtml(summary.range.to)}</td></tr>`
+    rows += blankRow
+
+    rows += section('RESERVAS')
+    rows += headerRow(['Total', 'Confirmadas', 'Canceladas', 'Reservas App', 'Horas App', 'Reservas Staff', 'Horas Staff', 'Horas Totales', 'Facturado Espacios'])
+    rows += dataRow([
+      summary.reservations.total, summary.reservations.confirmed, summary.reservations.cancelled,
+      summary.reservations.bySource.app.count, summary.reservations.bySource.app.hours,
+      summary.reservations.bySource.staff.count, summary.reservations.bySource.staff.hours,
+      summary.reservations.totalHours, formatPrice(summary.reservations.revenue),
+    ])
+    rows += blankRow
+
+    rows += section('MARKET')
+    rows += headerRow(['Pedidos', 'Pedidos App', 'Facturado App', 'Pedidos Staff', 'Facturado Staff', 'Facturado Market'])
+    rows += dataRow([
+      summary.market.orderCount, summary.market.bySource.app.count, formatPrice(summary.market.bySource.app.revenue),
+      summary.market.bySource.staff.count, formatPrice(summary.market.bySource.staff.revenue), formatPrice(summary.market.revenue),
+    ])
+    rows += blankRow
+
+    rows += section('PRODUCTOS CONSUMIDOS')
+    rows += headerRow(['Producto', 'Cantidad', 'Total'])
+    summary.market.products.forEach(p => { rows += dataRow([p.name, p.quantity, formatPrice(p.revenue)]) })
+    rows += blankRow
+
+    rows += `<tr><td colspan="2" style="background:#0057a5;color:#fff;font-weight:bold;padding:8px;">TOTAL GENERAL</td><td style="background:#0057a5;color:#fff;font-weight:bold;padding:8px;">${escHtml(formatPrice(summary.totalRevenue))}</td></tr>`
+    rows += blankRow
+
+    rows += section('DETALLE DE RESERVAS')
+    rows += headerRow(['Fecha', 'Código', 'Espacio', 'N° Escritorio', 'Desde', 'Hasta', 'Horas', 'Nombre', 'Apellido', 'Teléfono', 'Origen', 'Estado', 'Facturado Espacio', 'Consumo Market', 'Total'])
     summary.reservationsDetail.forEach(r => {
       const workspaceLabel = WORKSPACE_LABELS[r.workspace as WorkspaceType] || r.workspace
       const origen = r.source === 'app' ? 'App' : 'Staff'
       const estado = r.status === 'confirmed' ? 'Confirmada' : r.status === 'cancelled' ? 'Cancelada' : r.status
-      lines.push([
-        r.date, esc(r.code), esc(workspaceLabel), r.deskNumber, r.timeFrom, r.timeTo, r.hours,
-        esc(r.firstName), esc(r.lastName), esc(r.phone), origen, estado,
-        r.espacioRevenue, r.marketConsumption, r.total,
-      ].join(','))
+      rows += dataRow([
+        r.date, r.code, workspaceLabel, r.deskNumber, r.timeFrom, r.timeTo, r.hours,
+        r.firstName, r.lastName, r.phone, origen, estado,
+        formatPrice(r.espacioRevenue), formatPrice(r.marketConsumption), formatPrice(r.total),
+      ])
     })
 
-    const csv = lines.join('\n')
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+    const html = `<html><head><meta charset="UTF-8"></head><body><table style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">${rows}</table></body></html>`
+    const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `informe-fullwork-${summary.range.from}-a-${summary.range.to}.csv`
+    a.download = `informe-fullwork-${summary.range.from}-a-${summary.range.to}.xls`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -541,8 +563,8 @@ function ReportModal({ onClose }: { onClose: () => void }) {
               )}
             </div>
 
-            <Button type="button" variant="outline" onClick={downloadCsv} className="w-full">
-              <Download className="w-4 h-4 mr-2" /> Descargar Excel (CSV)
+            <Button type="button" variant="outline" onClick={downloadExcel} className="w-full">
+              <Download className="w-4 h-4 mr-2" /> Descargar Excel
             </Button>
           </div>
         )}
