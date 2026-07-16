@@ -632,10 +632,6 @@ export function StaffPageClient() {
                                       ) : (
                                         <div className="text-[10px] text-slate-600">{pedido.customer_name}</div>
                                       )}
-                                      <div className="flex justify-between items-center text-[10px] font-black text-blue-700 pt-1 border-t border-blue-200">
-                                        <span>Subtotal pedido:</span>
-                                        <span>{formatPrice(Number(pedido.total_amount))}</span>
-                                      </div>
                                     </div>
                                   )
                                 })}
@@ -782,3 +778,4 @@ export function StaffPageClient() {
     </div>
   )
 }
+
