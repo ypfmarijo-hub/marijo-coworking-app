@@ -779,5 +779,6 @@ export function StaffPageClient() {
         </div>
       )}
     </div>
+    </div>
   )
 }
