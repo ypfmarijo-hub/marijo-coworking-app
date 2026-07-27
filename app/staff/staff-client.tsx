@@ -75,6 +75,8 @@ function rowToReservation(row: Record<string, unknown>): Reservation {
     reservationCode: row.reservation_code as string | undefined,
     createdAt: new Date(row.created_at as string),
     cancelledAt: row.cancelled_at ? new Date(row.cancelled_at as string) : undefined,
+    actualTimeTo: row.actual_time_to as string | undefined,
+    completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
     market_orders: Array.isArray(row.market_orders) ? row.market_orders : undefined,
   }
 }
@@ -273,6 +275,36 @@ function CancelModal({ reservation, onClose, onConfirm }: { reservation: Reserva
         <h3 className="font-bold text-lg mb-2 uppercase">Cancelar Reserva</h3>
         <p className="text-sm text-muted-foreground mb-6">¿Estás seguro de cancelar la reserva de <b>{reservation.firstName}</b>?</p>
         <div className="flex gap-3"><Button variant="outline" className="flex-1" onClick={onClose}>Volver</Button><Button variant="destructive" className="flex-1" onClick={async () => { setCancelling(true); await onConfirm(); setCancelling(false) }} disabled={cancelling}>{cancelling ? '...' : 'Confirmar'}</Button></div>
+      </Card>
+    </div>
+  )
+}
+
+function FinalizeModal({ reservation, onClose, onConfirm }: { reservation: Reservation; onClose: () => void; onConfirm: (time: string) => Promise<void> }) {
+  const [time, setTime] = useState(reservation.timeTo)
+  const [saving, setSaving] = useState(false)
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <Card className="p-6 max-w-sm w-full border-0 shadow-2xl text-center">
+        <Clock className="w-12 h-12 text-green-600 mx-auto mb-4" />
+        <h3 className="font-bold text-lg mb-2 uppercase">Finalizar Reserva</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Confirmá la hora real de salida de <b>{reservation.firstName}</b>.
+        </p>
+        <div className="mb-6 text-left">
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Hora de salida</label>
+          <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+        </div>
+        <div className="flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={onClose}>Volver</Button>
+          <Button
+            className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+            onClick={async () => { setSaving(true); await onConfirm(time); setSaving(false) }}
+            disabled={saving}
+          >
+            {saving ? '...' : 'Finalizar'}
+          </Button>
+        </div>
       </Card>
     </div>
   )
@@ -581,6 +613,7 @@ export function StaffPageClient() {
   const [loading, setLoading] = useState(true)
   const [quickReservation, setQuickReservation] = useState<{ workspace: WorkspaceType; hour: number } | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Reservation | null>(null)
+  const [finalizeTarget, setFinalizeTarget] = useState<Reservation | null>(null)
   const [showCalendar, setShowCalendar] = useState(false); const [workspaceFilter, setWorkspaceFilter] = useState<'escritorio' | 'sala' | 'oficina' | null>(null)
   const alertedIdsRef = useRef<Set<string>>(new Set()); const [activeAlerts, setActiveAlerts] = useState<Set<string>>(new Set());
   const [liveStatus, setLiveStatus] = useState<Record<string, 'pending' | 'en_curso' | 'finalizada'>>({})
@@ -602,9 +635,28 @@ export function StaffPageClient() {
 
   useEffect(() => { setIsMounted(true) }, [])
 
-  const handleManualFinish = useCallback(async (r: Reservation, e: React.MouseEvent) => {
-    e.stopPropagation(); const supabase = createClient(); const { error } = await supabase.from('reservations').update({ status: 'cancelled', cancelled_at: new Date().toISOString() }).eq('id', r.id)
-    if (!error) setReservations(prev => prev.map(res => res.id === r.id ? { ...res, status: 'cancelled', cancelledAt: new Date() } : res))
+  const handleManualFinish = useCallback((r: Reservation, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setFinalizeTarget(r)
+  }, [])
+
+  const confirmFinalize = useCallback(async (r: Reservation, actualTimeTo: string) => {
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('reservations')
+      .update({
+        status: 'completed',
+        actual_time_to: actualTimeTo,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', r.id)
+
+    if (!error) {
+      setReservations(prev => prev.map(res =>
+        res.id === r.id ? { ...res, status: 'completed', actualTimeTo, completedAt: new Date() } : res
+      ))
+    }
+    setFinalizeTarget(null)
   }, [])
 
   useEffect(() => { if (typeof window !== 'undefined' && 'Notification' in window) setNotifPermission(Notification.permission); else setNotifPermission('unsupported') }, [])
@@ -744,8 +796,10 @@ export function StaffPageClient() {
 
   const confirmed = reservations.filter(r => r.status === 'confirmed')
   const cancelled = reservations.filter(r => r.status === 'cancelled')
+  const completed = reservations.filter(r => r.status === 'completed')
   const filteredConfirmed = confirmed.filter(r => matchesFilter(r.workspace, workspaceFilter))
   const filteredCancelled = cancelled.filter(r => matchesFilter(r.workspace, workspaceFilter))
+  const filteredCompleted = completed.filter(r => matchesFilter(r.workspace, workspaceFilter))
 
   if (!isMounted) {
     return (
@@ -790,6 +844,14 @@ export function StaffPageClient() {
           products={marketProducts}
           onClose={() => setManualOrderTarget(null)}
           onSubmit={(items) => submitManualOrder(manualOrderTarget, items)}
+        />
+      )}
+
+      {finalizeTarget && (
+        <FinalizeModal
+          reservation={finalizeTarget}
+          onClose={() => setFinalizeTarget(null)}
+          onConfirm={(time) => confirmFinalize(finalizeTarget, time)}
         />
       )}
 
@@ -857,10 +919,14 @@ export function StaffPageClient() {
       <div className="flex h-[calc(100vh-72px)] overflow-hidden">
         <main className="flex-1 overflow-y-auto p-6 bg-slate-50">
           <div className="max-w-5xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
               <Card className="p-4 border-none shadow-sm bg-white">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Confirmadas</p>
                 <p className="text-3xl font-black text-[#0057a5]">{filteredConfirmed.length}</p>
+              </Card>
+              <Card className="p-4 border-none shadow-sm bg-white">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Finalizadas</p>
+                <p className="text-3xl font-black text-green-600">{filteredCompleted.length}</p>
               </Card>
               <Card className="p-4 border-none shadow-sm bg-white">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Canceladas</p>
@@ -880,13 +946,14 @@ export function StaffPageClient() {
                 <div className="space-y-4">
                   {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 w-full rounded-2xl" />)}
                 </div>
-              ) : [...filteredConfirmed, ...filteredCancelled].length === 0 ? (
+              ) : [...filteredConfirmed, ...filteredCompleted, ...filteredCancelled].length === 0 ? (
                 <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No hay reservas para mostrar hoy</p>
                 </div>
-              ) : [...filteredConfirmed, ...filteredCancelled].map((r) => {
+              ) : [...filteredConfirmed, ...filteredCompleted, ...filteredCancelled].map((r) => {
                 const colors = WORKSPACE_COLORS[r.workspace] || { border: 'border-slate-200', text: 'text-slate-600', bg: 'bg-slate-50' };
                 const isCancelled = r.status === 'cancelled';
+                const isCompleted = r.status === 'completed';
                 const status = liveStatus[r.id] || 'pending';
                 const isAlerted = activeAlerts.has(r.id);
                 
@@ -926,9 +993,15 @@ export function StaffPageClient() {
                             <Badge variant="outline" className="text-[9px] border-green-200 text-green-600 font-bold uppercase bg-green-50/50">Reserva App</Badge>
                           )}
 
-                          {status === 'en_curso' && (
+                          {!isCompleted && !isCancelled && status === 'en_curso' && (
                             <Badge className={`${isAlerted ? 'bg-orange-600' : 'bg-green-500'} text-white text-[9px] uppercase font-black`}>
                               {isAlerted ? '¡FINALIZA EN 10 MIN!' : 'En Curso'}
+                            </Badge>
+                          )}
+
+                          {isCompleted && (
+                            <Badge className="bg-green-600 text-white text-[9px] uppercase font-black">
+                              Finalizada{r.actualTimeTo ? ` · ${r.actualTimeTo}` : ''}
                             </Badge>
                           )}
                         </div>
@@ -1000,7 +1073,7 @@ export function StaffPageClient() {
                       </div>
                       
                       <div className="flex flex-col gap-2">
-                        {!isCancelled && status === 'en_curso' && (
+                        {!isCancelled && !isCompleted && status === 'en_curso' && (
                           <Button 
                             size="sm" 
                             className="bg-red-600 hover:bg-red-700 text-white font-black text-[10px] uppercase h-8 px-3 rounded-lg shadow-md transition-all active:scale-95 flex items-center gap-1"
