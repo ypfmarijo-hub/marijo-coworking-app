@@ -957,7 +957,8 @@ export function StaffPageClient() {
                 const status = liveStatus[r.id] || 'pending';
                 const isAlerted = activeAlerts.has(r.id);
                 
-                const duration = calculateDuration(r.timeFrom, r.timeTo);
+                const effectiveTimeTo = r.status === 'completed' && r.actualTimeTo ? r.actualTimeTo : r.timeTo
+                const duration = calculateDuration(r.timeFrom, effectiveTimeTo);
                 const reservationPrice = (WORKSPACE_PRICES[r.workspace] || 0) * duration;
 
                 // Mostrar pedidos aceptados o entregados para esta reserva
