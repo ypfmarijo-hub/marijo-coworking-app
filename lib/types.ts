@@ -6,7 +6,7 @@ export type WorkspaceType =
   | 'oficina-c'
   | 'oficina-d'
 
-export type ReservationStatus = 'pending' | 'payment_pending' | 'confirmed' | 'cancelled'
+export type ReservationStatus = 'pending' | 'payment_pending' | 'confirmed' | 'cancelled' | 'completed'
 
 export interface Reservation {
   id: string
@@ -26,6 +26,8 @@ export interface Reservation {
   isPresent?: boolean // true = presencial (staff), false = desde celular
   createdAt: Date
   cancelledAt?: Date
+  actualTimeTo?: string // hora real de salida al finalizar
+  completedAt?: Date // momento en que se marcó como finalizada
   market_orders?: any[] // Array of market orders
 }
 
