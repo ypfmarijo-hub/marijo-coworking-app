@@ -59,6 +59,13 @@ function formatPrice(amount: number): string {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(amount)
 }
 
+function formatHours(decimalHours: number): string {
+  const totalMinutes = Math.round(decimalHours * 60)
+  const h = Math.floor(totalMinutes / 60)
+  const m = totalMinutes % 60
+  return m === 0 ? `${h}h` : `${h}h ${m}min`
+}
+
 function rowToReservation(row: Record<string, unknown>): Reservation {
   return {
     id: row.id as string,
@@ -464,9 +471,9 @@ function ReportModal({ onClose }: { onClose: () => void }) {
     rows += headerRow(['Total', 'Confirmadas', 'Canceladas', 'Reservas App', 'Horas App', 'Reservas Staff', 'Horas Staff', 'Horas Totales', 'Facturado Espacios'])
     rows += dataRow([
       summary.reservations.total, summary.reservations.confirmed, summary.reservations.cancelled,
-      summary.reservations.bySource.app.count, summary.reservations.bySource.app.hours,
-      summary.reservations.bySource.staff.count, summary.reservations.bySource.staff.hours,
-      summary.reservations.totalHours, formatPrice(summary.reservations.revenue),
+      summary.reservations.bySource.app.count, formatHours(summary.reservations.bySource.app.hours),
+      summary.reservations.bySource.staff.count, formatHours(summary.reservations.bySource.staff.hours),
+      formatHours(summary.reservations.totalHours), formatPrice(summary.reservations.revenue),
     ])
     rows += blankRow
 
@@ -493,7 +500,7 @@ function ReportModal({ onClose }: { onClose: () => void }) {
       const origen = r.source === 'app' ? 'App' : 'Staff'
       const estado = r.status === 'confirmed' ? 'Confirmada' : r.status === 'cancelled' ? 'Cancelada' : r.status
       rows += dataRow([
-        r.date, r.code, workspaceLabel, r.deskNumber, r.timeFrom, r.timeTo, r.hours,
+        r.date, r.code, workspaceLabel, r.deskNumber, r.timeFrom, r.timeTo, formatHours(r.hours),
         r.firstName, r.lastName, r.phone, origen, estado,
         formatPrice(r.espacioRevenue), formatPrice(r.marketConsumption), formatPrice(r.total),
       ])
@@ -562,7 +569,7 @@ function ReportModal({ onClose }: { onClose: () => void }) {
               </div>
               <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Horas Reservadas</p>
-                <p className="text-lg font-black text-foreground">{summary.reservations.totalHours.toLocaleString('es-AR', { maximumFractionDigits: 1 })} hs</p>
+                <p className="text-lg font-black text-foreground">{formatHours(summary.reservations.totalHours)}</p>
               </div>
               <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Facturado Espacios</p>
