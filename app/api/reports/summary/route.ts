@@ -9,10 +9,17 @@ function getServiceSupabase() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 }
 
+// Redondea a 2 decimales para evitar los decimales largos que deja el punto flotante de JS
+// (ej: 31.866666666666660 en vez de 31.87)
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100
+}
+
 function durationHours(timeFrom: string, timeTo: string): number {
   const [hFrom, mFrom] = timeFrom.split(':').map(Number)
   const [hTo, mTo] = timeTo.split(':').map(Number)
-  return ((hTo * 60 + mTo) - (hFrom * 60 + mFrom)) / 60
+  const raw = ((hTo * 60 + mTo) - (hFrom * 60 + mFrom)) / 60
+  return round2(raw)
 }
 
 // GET /api/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -64,7 +71,7 @@ export async function GET(req: NextRequest) {
     const appReservations = confirmedReservations.filter((r: any) => !!r.receipt_url)
     const staffReservations = confirmedReservations.filter((r: any) => !r.receipt_url)
 
-    const sumHours = (list: any[]) => list.reduce((acc: number, r: any) => acc + durationHours(r.time_from, r.time_to), 0)
+    const sumHours = (list: any[]) => round2(list.reduce((acc: number, r: any) => acc + durationHours(r.time_from, r.time_to), 0))
     const totalHours = sumHours(confirmedReservations)
     const appHours = sumHours(appReservations)
     const staffHours = sumHours(staffReservations)
