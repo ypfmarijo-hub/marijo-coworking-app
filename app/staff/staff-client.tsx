@@ -406,7 +406,7 @@ function ManualOrderModal({ reservation, products, onClose, onSubmit }: ManualOr
 interface ReportSummary {
   range: { from: string; to: string }
   reservations: {
-    total: number; confirmed: number; cancelled: number; revenue: number; totalHours: number
+    total: number; confirmed: number; completed: number; cancelled: number; other: number; revenue: number; totalHours: number
     bySource: { app: { count: number; hours: number }; staff: { count: number; hours: number } }
   }
   market: {
@@ -498,7 +498,7 @@ function ReportModal({ onClose }: { onClose: () => void }) {
     summary.reservationsDetail.forEach(r => {
       const workspaceLabel = WORKSPACE_LABELS[r.workspace as WorkspaceType] || r.workspace
       const origen = r.source === 'app' ? 'App' : 'Staff'
-      const estado = r.status === 'confirmed' ? 'Confirmada' : r.status === 'cancelled' ? 'Cancelada' : r.status
+        const estado = r.status === 'confirmed' ? 'Confirmada' : r.status === 'completed' ? 'Completada' : r.status === 'cancelled' ? 'Cancelada' : r.status
       rows += dataRow([
         r.date, r.code, workspaceLabel, r.deskNumber, r.timeFrom, r.timeTo, formatHours(r.hours),
         r.firstName, r.lastName, r.phone, origen, estado,
@@ -553,7 +553,7 @@ function ReportModal({ onClose }: { onClose: () => void }) {
               <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Reservas</p>
                 <p className="text-2xl font-black text-[#0057a5]">{summary.reservations.total}</p>
-                <p className="text-[10px] text-slate-500 mt-1">{summary.reservations.confirmed} confirmadas · {summary.reservations.cancelled} canceladas</p>
+                <p className="text-[10px] text-slate-500 mt-1">{summary.reservations.confirmed} confirmadas · {summary.reservations.completed} completadas · {summary.reservations.cancelled} canceladas</p>
               </div>
               <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Pedidos Market</p>
