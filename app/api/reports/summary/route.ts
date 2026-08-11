@@ -65,18 +65,26 @@ export async function GET(req: NextRequest) {
     const allReservations = reservations || []
     const confirmedReservations = allReservations.filter((r: any) => r.status === 'confirmed')
     const cancelledReservations = allReservations.filter((r: any) => r.status === 'cancelled')
+    // 'completed' = reserva que ya se usó y terminó normalmente (no cancelada). Cuenta como facturable, igual que 'confirmed'.
+    const completedReservations = allReservations.filter((r: any) => r.status === 'completed')
+    // Cualquier otro estado que exista (ej: payment_pending) para que el total siempre cierre
+    const otherReservations = allReservations.filter((r: any) =>
+      !['confirmed', 'cancelled', 'completed'].includes(r.status)
+    )
+    // Reservas que efectivamente generan facturación: confirmadas + completadas (canceladas no)
+    const billableReservations = [...confirmedReservations, ...completedReservations]
 
     // Igual criterio que usa el panel de Staff para las etiquetas "Reserva App" / "Atención Staff":
     // si tiene comprobante subido (receipt_url), fue pagada/hecha desde la app; si no, la cargó el staff.
-    const appReservations = confirmedReservations.filter((r: any) => !!r.receipt_url)
-    const staffReservations = confirmedReservations.filter((r: any) => !r.receipt_url)
+    const appReservations = billableReservations.filter((r: any) => !!r.receipt_url)
+    const staffReservations = billableReservations.filter((r: any) => !r.receipt_url)
 
     const sumHours = (list: any[]) => round2(list.reduce((acc: number, r: any) => acc + durationHours(r.time_from, r.time_to), 0))
-    const totalHours = sumHours(confirmedReservations)
+    const totalHours = sumHours(billableReservations)
     const appHours = sumHours(appReservations)
     const staffHours = sumHours(staffReservations)
 
-    const espacioRevenue = confirmedReservations.reduce((acc: number, r: any) => {
+    const espacioRevenue = billableReservations.reduce((acc: number, r: any) => {
       const price = WORKSPACE_PRICES[r.workspace as WorkspaceType] || 0
       const hours = durationHours(r.time_from, r.time_to)
       return acc + price * hours
@@ -118,7 +126,8 @@ export async function GET(req: NextRequest) {
       .sort((a: any, b: any) => `${a.date} ${a.time_from}`.localeCompare(`${b.date} ${b.time_from}`))
       .map((r: any) => {
         const hours = durationHours(r.time_from, r.time_to)
-        const espacio = r.status === 'confirmed' ? (WORKSPACE_PRICES[r.workspace as WorkspaceType] || 0) * hours : 0
+        const isBillable = r.status === 'confirmed' || r.status === 'completed'
+        const espacio = isBillable ? (WORKSPACE_PRICES[r.workspace as WorkspaceType] || 0) * hours : 0
         const ordersForReservation = allOrders.filter((o: any) => o.reservation_id === r.id)
         const consumo = ordersForReservation.reduce((acc: number, o: any) => acc + (Number(o.total_amount) || 0), 0)
         return {
@@ -145,7 +154,9 @@ export async function GET(req: NextRequest) {
       reservations: {
         total: allReservations.length,
         confirmed: confirmedReservations.length,
+        completed: completedReservations.length,
         cancelled: cancelledReservations.length,
+        other: otherReservations.length,
         revenue: espacioRevenue,
         totalHours,
         bySource: {
