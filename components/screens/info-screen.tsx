@@ -1,10 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useReservation } from '@/lib/reservation-context'
-import { SPACE_DETAILS, WORKSPACE_PRICES, WorkspaceType } from '@/lib/types'
+import { SPACE_DETAILS, WorkspaceType } from '@/lib/types'
 import {
   ArrowLeft,
   Users,
@@ -39,7 +38,7 @@ interface SpaceCardProps {
   onClick: () => void
 }
 
-function SpaceCard({ spaceId, name, capacity, surface, price, image, onClick }: SpaceCardProps) {
+function SpaceCard({ name, capacity, surface, price, image, onClick }: SpaceCardProps) {
   return (
     <Card
       className="overflow-hidden border-0 shadow-md cursor-pointer hover:shadow-lg transition-shadow active:scale-[0.99]"
@@ -95,7 +94,7 @@ function SectionHeader({ title }: { title: string }) {
 }
 
 export function InfoScreen() {
-  const { setCurrentScreen, setSelectedSpaceId, setSelectedDesk } = useReservation()
+  const { setCurrentScreen, setSelectedSpaceId, setSelectedDesk, prices: WORKSPACE_PRICES } = useReservation()
   const [salaExpanded, setSalaExpanded] = useState(false)
 
   const handleOpenSpace = (id: WorkspaceType) => {
@@ -114,7 +113,7 @@ export function InfoScreen() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="bg-primary px-4 pt-12 pb-6">
+      <div className="bg-primary px-4 pt-12 pb-6 md:px-8 md:pt-8">
         <button
           onClick={() => setCurrentScreen('home')}
           className="flex items-center gap-2 text-primary-foreground/90 hover:text-primary-foreground mb-4"
@@ -126,7 +125,8 @@ export function InfoScreen() {
         <p className="text-primary-foreground/80 mt-1">Conoce nuestros espacios</p>
       </div>
 
-      <div className="px-4 py-5 space-y-4">
+      <div className="px-4 py-5 space-y-4 md:px-8 md:py-8 md:space-y-0 md:grid md:grid-cols-3 md:gap-6 md:items-start">
+        <div className="space-y-4">
         {/* Escritorio */}
         <SectionHeader title="Escritorio" />
         <SpaceCard
@@ -138,6 +138,8 @@ export function InfoScreen() {
           onClick={() => handleOpenSpace('escritorio')}
         />
 
+        </div>
+        <div className="space-y-4">
         {/* Salas de reunión */}
         <SectionHeader title="Salas de reunión" />
 
@@ -203,6 +205,8 @@ export function InfoScreen() {
           )}
         </Card>
 
+        </div>
+        <div className="space-y-4">
         {/* Oficinas */}
         <SectionHeader title="Oficinas privadas" />
         <SpaceCard
@@ -223,6 +227,7 @@ export function InfoScreen() {
           image={SPACE_IMAGES['oficina-d']}
           onClick={() => handleOpenSpace('oficina-d')}
         />
+        </div>
       </div>
 
       <div className="h-8" />

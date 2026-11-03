@@ -5,9 +5,6 @@ interface GoogleMapProps {
 }
 
 export function GoogleMap({ className = '' }: GoogleMapProps) {
-  // Coordinates for San Martín 1883, Río Cuarto, Córdoba, Argentina
-  const lat = -33.1307
-  const lng = -64.3498
   const query = encodeURIComponent('San Martín 1883, Río Cuarto, Córdoba, Argentina')
   
   return (

@@ -1,5 +1,7 @@
 'use client'
 
+import { BenefitCard } from '@/components/benefit-card'
+
 import { useState, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -16,7 +18,10 @@ import {
   XCircle,
   CheckCircle2,
   Trash2,
+  Gift,
 } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { FeedbackForm, Stars } from '@/components/feedback-form'
 
 
 const MONTHS = [
@@ -113,7 +118,11 @@ function SwipeableCard({
 }
 
 export function MyReservationsScreen() {
-  const { setCurrentScreen, reservations, reservationsLoading, phone, cancelReservation, hideFromHistory, hiddenReservationIds } = useReservation()
+  const { setCurrentScreen, reservations, reservationsLoading, phone, setPhone, cancelReservation, hideFromHistory, hiddenReservationIds, myBenefit, reloadReservations } = useReservation()
+  const [rateOpen, setRateOpen] = useState<string | null>(null)
+  const [justRated, setJustRated] = useState<Record<string, number>>({})
+  const [phoneInput, setPhoneInput] = useState('')
+  const [askPhone, setAskPhone] = useState(false)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
   const [pendingCancelId, setPendingCancelId] = useState<string | null>(null)
   const [showDepositWarning, setShowDepositWarning] = useState(false)
@@ -167,7 +176,7 @@ export function MyReservationsScreen() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <div className="bg-primary px-4 pt-12 pb-6">
+      <div className="bg-primary px-4 pt-12 pb-6 md:px-8 md:pt-8">
         <button
           onClick={() => setCurrentScreen('home')}
           className="flex items-center gap-2 text-primary-foreground/90 hover:text-primary-foreground mb-4"
@@ -219,8 +228,32 @@ export function MyReservationsScreen() {
       )}
 
       {/* Content */}
-      <div className="flex-1 px-4 py-6">
-        {reservationsLoading ? (
+      <div className="flex-1 px-4 py-6 space-y-4 md:px-8">
+        {(!phone || askPhone) && (
+          <Card className="p-4 border-0 shadow-md space-y-3">
+            <label htmlFor="mr-phone" className="block font-semibold text-foreground">Ingresá tu WhatsApp para ver tus reservas</label>
+            <Input id="mr-phone" type="tel" inputMode="tel" placeholder="358 576 9421" value={phoneInput} onChange={(e) => setPhoneInput(e.target.value)} className="h-12 text-base" />
+            <Button className="w-full h-12" disabled={phoneInput.replace(/\D/g, '').length < 10}
+              onClick={() => { setPhone(phoneInput.replace(/\D/g, '')); setAskPhone(false) }}>
+              Ver mis reservas
+            </Button>
+          </Card>
+        )}
+        {phone && !askPhone && (
+          <p className="text-sm text-muted-foreground">
+            Reservas del número <b className="text-foreground">{phone}</b> ·{' '}
+            <button className="font-semibold text-primary underline" onClick={() => { setPhoneInput(''); setAskPhone(true) }}>Cambiar</button>
+          </p>
+        )}
+
+        {phone && myBenefit && (
+          <div className="space-y-1">
+            <p className="flex items-center gap-2 font-semibold text-foreground"><Gift className="w-5 h-5 text-primary" />Beneficios por horas</p>
+            <BenefitCard b={myBenefit} />
+          </div>
+        )}
+
+        {!phone || askPhone ? null : reservationsLoading ? (
           <div className="space-y-3">
             {[1, 2, 3].map(i => (
               <Card key={i} className="p-4 border-0 shadow-md">
@@ -247,7 +280,7 @@ export function MyReservationsScreen() {
             </Button>
           </Card>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 md:gap-4 md:items-start">
             {sortedReservations.map(reservation => {
               const isCancelled = reservation.status === 'cancelled'
               const isCancelling = cancellingId === reservation.id
@@ -290,12 +323,11 @@ export function MyReservationsScreen() {
                       )}
                     </div>
 
-                    {/* Reservation code (if confirmed) */}
-                    {!isCancelled && reservation.reservationCode && (
-                      <div className="bg-primary/5 px-3 py-2 rounded border border-primary/10">
-                        <p className="text-xs text-muted-foreground mb-1">Código:</p>
-                        <p className="font-mono font-bold text-primary">{reservation.reservationCode}</p>
-                      </div>
+                    {/* El código de la pizarra no se muestra acá (alcanza con el teléfono para ver esta pantalla) */}
+                    {!isCancelled && !isPast && (
+                      <p className="text-xs text-muted-foreground bg-primary/5 px-3 py-2 rounded border border-primary/10">
+                        Tu código para entrar a la pizarra te lo dan en la caja o por WhatsApp.
+                      </p>
                     )}
 
                     {/* Time & Space */}
@@ -331,6 +363,25 @@ export function MyReservationsScreen() {
                       </div>
                     )}
 
+                    {/* Opinión: cuando la visita ya empezó */}
+                    {!isCancelled && hoursUntilReservation(reservation.date, reservation.timeFrom) <= 0 && (
+                      (justRated[reservation.id] || reservation.myRating) ? (
+                        <p className="text-sm text-emerald-700 flex items-center gap-2 pt-2 border-t border-border">
+                          <Stars value={justRated[reservation.id] || reservation.myRating || 0} /> ¡Gracias por tu opinión!
+                        </p>
+                      ) : rateOpen === reservation.id ? (
+                        <div className="pt-2 border-t border-border">
+                          <FeedbackForm reservationId={reservation.id} phone={phone}
+                            onDone={(r) => { setJustRated((p) => ({ ...p, [reservation.id]: r })); setRateOpen(null); reloadReservations() }} />
+                        </div>
+                      ) : (
+                        <button onClick={() => setRateOpen(reservation.id)}
+                          className="w-full h-10 rounded-lg border border-primary/30 text-primary text-sm font-semibold">
+                          ★ Dejar mi opinión sobre esta visita
+                        </button>
+                      )
+                    )}
+
                     {/* Hint for past reservations */}
                     {isPast && (
                       <p className="text-xs text-muted-foreground pt-2 border-t border-border">
@@ -348,7 +399,7 @@ export function MyReservationsScreen() {
 
       {/* New Reservation - show if user has phone (has reserved before) */}
       {phone && myReservations.length > 0 && (
-        <div className="px-4 pb-8">
+        <div className="px-4 pb-8 md:px-8 md:max-w-sm">
           <Button
             className="w-full h-14 text-base font-medium gap-3"
             onClick={() => setCurrentScreen('info')}

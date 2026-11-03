@@ -24,11 +24,20 @@ export interface Reservation {
   paymentMethod?: 'mercado_pago' | 'transfer'
   amountPaid?: number
   isPresent?: boolean // true = presencial (staff), false = desde celular
+  autoFinalized?: boolean // se finalizó sola al terminar el horario
+  dni?: string | null
+  ageRangeStaff?: string | null // edad aproximada que estimó el staff
   createdAt: Date
   cancelledAt?: Date
   actualTimeTo?: string // hora real de salida al finalizar
   completedAt?: Date // momento en que se marcó como finalizada
   market_orders?: any[] // Array of market orders
+  extraHours?: number // horas agregadas con "Extender estadía"
+  extraPaid?: number // (versión anterior) lo pagado por adelantado por extensiones
+  extraAmount?: number // costo de las horas extendidas, se cobra en caja
+  priceTotal?: number | null // total con el que se hizo la reserva (por horas o combo)
+  comboName?: string | null // combo elegido, si hubo
+  myRating?: number | null // opinión que dejó el cliente (1 a 5)
 }
 
 export const WORKSPACE_LABELS: Record<WorkspaceType, string> = {
@@ -47,13 +56,6 @@ export const WORKSPACE_PRICES: Record<WorkspaceType, number> = {
   'sala-grande': 120000,
   'oficina-c': 30000,
   'oficina-d': 30000,
-}
-
-/** Calculates deposit amount (50% of hourly rate) based on workspace and duration */
-export function calculateDeposit(workspace: WorkspaceType, hours: number): number {
-  const hourlyRate = WORKSPACE_PRICES[workspace]
-  const totalCost = hourlyRate * hours
-  return Math.round(totalCost * 0.5) // 50% deposit
 }
 
 export interface SpaceDetail {
@@ -177,7 +179,7 @@ export const SPACE_DETAILS: SpaceDetail[] = [
 ]
 
 // Generate 30-minute intervals from 07:00 to 22:00
-export function generateTimeSlots(): string[] {
+function generateTimeSlots(): string[] {
   const slots: string[] = []
   for (let h = 7; h <= 22; h++) {
     slots.push(`${String(h).padStart(2, '0')}:00`)
@@ -187,6 +189,13 @@ export function generateTimeSlots(): string[] {
 }
 
 export const TIME_SLOTS = generateTimeSlots()
+
+/**
+ * Aviso de consentimiento de datos personales (Ley 25.326) en el formulario de reserva.
+ * APAGADO hasta que el dueño decida. Para activarlo: en Vercel, variable
+ * NEXT_PUBLIC_MOSTRAR_CONSENTIMIENTO = si  (y volver a publicar).
+ */
+export const SHOW_DATA_CONSENT = process.env.NEXT_PUBLIC_MOSTRAR_CONSENTIMIENTO === 'si'
 
 export const CONTACT_INFO = {
   address: 'San Martín 1883, Río Cuarto, Córdoba, Argentina',

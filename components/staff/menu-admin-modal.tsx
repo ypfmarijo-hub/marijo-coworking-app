@@ -1,11 +1,12 @@
 'use client'
 
+import { MenuExcel } from '@/components/staff/menu-excel'
 import { useState, useRef, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
-import { Plus, Trash2, Upload, Loader2, ImageIcon, X, Pencil } from 'lucide-react'
+import { Plus, Trash2, Upload, Loader2, ImageIcon, X, Pencil, Search } from 'lucide-react'
 
 interface Product {
   id: string
@@ -36,6 +37,10 @@ export function MenuAdminModal({ products, onProductAdded, onProductDeleted }: M
   const [options, setOptions] = useState<Array<{ label: string; choices: string[] }>>([])
   const [notesLabel, setNotesLabel] = useState('')
   const [maxNotesChars, setMaxNotesChars] = useState(150)
+  const [search, setSearch] = useState('') // buscar en la lista de productos
+  const normText = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const sq = normText(search.trim())
+  const shown = sq ? products.filter((p: any) => normText(`${p.name} ${p.category || ''}`).includes(sq)) : products
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Cargar categorías existentes
@@ -56,6 +61,7 @@ export function MenuAdminModal({ products, onProductAdded, onProductDeleted }: M
   }, [])
 
   const handleEdit = (product: any) => {
+    setTimeout(() => document.getElementById('menu-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
     setEditingId(product.id)
     setName(product.name)
     setPrice(product.price.toString())
@@ -168,7 +174,7 @@ export function MenuAdminModal({ products, onProductAdded, onProductDeleted }: M
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 border-b pb-6 mb-6">
+        <form id="menu-form" onSubmit={handleSubmit} className="space-y-4 border-b pb-6 mb-6">
           <div className="flex justify-between items-center">
             <h3 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">
               {editingId ? 'Modificando Producto' : 'Agregar Producto'}
@@ -237,12 +243,19 @@ export function MenuAdminModal({ products, onProductAdded, onProductDeleted }: M
           </Button>
         </form>
 
+        <MenuExcel products={products as any} onDone={onProductAdded} />
+
         <div>
           <h3 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground mb-3">
-            Productos Actuales ({products.length})
+            Productos Actuales ({sq ? `${shown.length} de ${products.length}` : products.length})
           </h3>
+          <div className="relative mb-3">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto o categoría…" aria-label="Buscar producto" className="pl-9 h-11" />
+          </div>
+          {sq && shown.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Ningún producto coincide con "{search.trim()}".</p>}
           <div className="space-y-2">
-            {products.map((product) => (
+            {shown.map((product: any) => (
               <Card key={product.id} className={`p-3 flex items-center gap-3 ${editingId === product.id ? 'border-orange-500 bg-orange-50' : ''}`}>
                 {product.image_url ? (
                   <img src={product.image_url} alt={product.name} className="w-12 h-12 object-cover rounded" />
@@ -251,6 +264,7 @@ export function MenuAdminModal({ products, onProductAdded, onProductDeleted }: M
                 )}
                 <div className="flex-1">
                   <p className="font-medium">{product.name}</p>
+                  {product.category && <p className="text-[11px] text-slate-400 font-semibold">{product.category}</p>}
                   <p className="text-sm text-muted-foreground">$ {product.price.toLocaleString('es-AR')}</p>
                 </div>
                 <div className="flex gap-1">

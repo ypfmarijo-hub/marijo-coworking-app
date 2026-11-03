@@ -49,7 +49,7 @@ interface MarketContextType {
   mergeCartItems: (items: any[], merge?: 'replace' | 'add') => void
   clearCart: () => void
   getCartTotal: () => number
-  createOrder: (customerName: string, workspace: string | null, reservationId: string, phone?: string) => Promise<boolean>
+  createOrder: (workspace: string | null, reservationId: string, phone?: string) => Promise<boolean>
   setCurrentView: (view: 'categories' | 'products', category?: string | null) => void
 }
 
@@ -80,7 +80,7 @@ export function MarketProvider({ children }: { children: React.ReactNode }) {
     const { data, error } = await supabase
       .from('products')
       .select('*')
-      .order('created_at', { ascending: false })
+      .order('category', { ascending: true }).order('name', { ascending: true })
 
     if (!error && data) {
       setProducts(data)
@@ -172,7 +172,6 @@ export function MarketProvider({ children }: { children: React.ReactNode }) {
   }, [cart])
 
 const createOrder = useCallback(async (
-  customerName: string,
   workspace: string | null,
   reservationId: string,   // ← UUID directo
   phone?: string
@@ -184,6 +183,7 @@ const createOrder = useCallback(async (
   }
 
   const productsData = cart.map(item => ({
+    product_id: item.product.id,
     name: item.product.name,
     price: item.product.price,
     quantity: item.quantity,

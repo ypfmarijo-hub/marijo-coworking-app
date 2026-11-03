@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useReservation } from '@/lib/reservation-context'
-import { SPACE_DETAILS, WORKSPACE_PRICES, WorkspaceType } from '@/lib/types'
+import { SPACE_DETAILS, WorkspaceType } from '@/lib/types'
 import {
   ArrowLeft,
   Users,
@@ -136,7 +136,7 @@ interface FullBenefitProps {
   spaceName: string
 }
 
-function FullBenefit({ price, spaceName }: FullBenefitProps) {
+function FullBenefit({ price }: FullBenefitProps) {
   return (
     <Card className="p-4 border border-primary/20 bg-primary/5">
       <div className="flex items-center gap-2 mb-3">
@@ -174,6 +174,9 @@ export function SpaceDetailScreen() {
     setSelectedWorkspace,
     selectedDesk,
     setSelectedDesk,
+    prices,
+    combos,
+    depositRequiredFor,
   } = useReservation()
 
   const space = SPACE_DETAILS.find(s => s.id === selectedSpaceId)
@@ -187,7 +190,8 @@ export function SpaceDetailScreen() {
   }
 
   const images = SPACE_IMAGES[space.id]
-  const price = WORKSPACE_PRICES[space.id]
+  const price = prices[space.id]
+  const spaceCombos = combos.filter((c) => c.workspace === space.id)
   const seña = Math.round(price * 0.5)
 
   const handleReserve = () => {
@@ -214,7 +218,7 @@ export function SpaceDetailScreen() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 px-4 py-5 space-y-5 overflow-auto">
+      <div className="flex-1 px-4 py-5 space-y-5 overflow-auto md:px-8 md:max-w-3xl md:mx-auto md:w-full">
         {/* Title + Price */}
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -234,9 +238,40 @@ export function SpaceDetailScreen() {
           </div>
           <div className="text-right flex-shrink-0">
             <p className="text-xl font-bold text-primary">{formatPrice(price)}</p>
-            <p className="text-xs text-muted-foreground">por reserva</p>
+            <p className="text-xs text-muted-foreground">por hora</p>
           </div>
         </div>
+
+        {spaceCombos.length > 0 && (
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+            <p className="text-sm font-semibold text-foreground mb-1">También podés reservar con combo</p>
+            <ul className="space-y-1">
+              {spaceCombos.map((c) => {
+                // ahorro contra pagar esas mismas horas sueltas
+                const normal = (price || 0) * c.hours
+                const save = normal - c.price
+                const pct = normal > 0 ? Math.round((save / normal) * 100) : 0
+                return (
+                  <li key={c.id} className="py-1">
+                    <div className="flex justify-between gap-3 text-sm">
+                      <span>{c.name} · {c.hours} h</span>
+                      <span className="text-right">
+                        {save > 0 && <span className="mr-2 text-xs text-muted-foreground line-through">{formatPrice(normal)}</span>}
+                        <span className="font-semibold text-primary">{formatPrice(c.price)}</span>
+                      </span>
+                    </div>
+                    {save > 0 && (
+                      <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-bold text-green-800">
+                        Ahorrás {formatPrice(save)}{pct > 0 ? ` (${pct}%)` : ''} frente a {c.hours} horas sueltas
+                      </p>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+            <p className="text-xs text-muted-foreground mt-1">Lo elegís al seleccionar el horario.</p>
+          </div>
+        )}
 
         {/* Description */}
         <div>
@@ -290,16 +325,22 @@ export function SpaceDetailScreen() {
       </div>
 
       {/* CTA */}
-      <div className="px-4 pb-8 pt-4 border-t border-border bg-background">
-        <Card className="p-3 bg-amber-50 border border-amber-200 mb-4">
-          <p className="text-sm text-amber-800">
-            <span className="font-semibold">Seña del 50%:</span>{' '}
-            {formatPrice(seña)} para confirmar la reserva.
-          </p>
-          <p className="text-xs text-amber-700 mt-0.5">
-            Cancelaciones con menos de 24 h de anticipacion no tienen reembolso.
-          </p>
-        </Card>
+      <div className="px-4 pb-8 pt-4 border-t border-border bg-background md:px-8"><div className="md:max-w-3xl md:mx-auto">
+        {depositRequiredFor(space.id) ? (
+          <Card className="p-3 bg-amber-50 border border-amber-200 mb-4">
+            <p className="text-sm text-amber-800">
+              <span className="font-semibold">Seña del 50%:</span>{' '}
+              {formatPrice(seña)} por hora reservada, para confirmar la reserva.
+            </p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              Cancelaciones con menos de 24 h de anticipacion no tienen reembolso.
+            </p>
+          </Card>
+        ) : (
+          <Card className="p-3 bg-green-50 border border-green-200 mb-4">
+            <p className="text-sm text-green-800"><span className="font-semibold">Sin seña:</span> reservás ahora y pagás todo en el lugar.</p>
+          </Card>
+        )}
         <Button
           className="w-full h-14 text-base font-semibold"
           onClick={handleReserve}
@@ -312,7 +353,7 @@ export function SpaceDetailScreen() {
             Selecciona un escritorio para continuar
           </p>
         )}
-      </div>
+      </div></div>
     </div>
   )
 }

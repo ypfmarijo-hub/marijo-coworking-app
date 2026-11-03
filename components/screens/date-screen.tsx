@@ -74,7 +74,7 @@ export function DateScreen() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <div className="bg-primary px-4 pt-12 pb-6">
+      <div className="bg-primary px-4 pt-12 pb-6 md:px-8 md:pt-8">
         <button
           onClick={() => setCurrentScreen('space-detail')}
           className="flex items-center gap-2 text-primary-foreground/90 hover:text-primary-foreground mb-4"
@@ -91,7 +91,7 @@ export function DateScreen() {
       </div>
 
       {/* Calendar */}
-      <div className="flex-1 px-4 py-6">
+      <div className="flex-1 px-4 py-6 md:max-w-xl md:mx-auto md:w-full">
         <Card className="p-4 border-0 shadow-lg">
           {/* Month Navigation */}
           <div className="flex items-center justify-between mb-6">
@@ -170,7 +170,7 @@ export function DateScreen() {
       </div>
 
       {/* Next Button */}
-      <div className="px-4 pb-8">
+      <div className="px-4 pb-8 md:max-w-xl md:mx-auto md:w-full">
         <Button
           className="w-full h-14 text-base font-medium"
           disabled={!selectedDate}

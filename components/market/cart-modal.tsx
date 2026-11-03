@@ -3,7 +3,6 @@
 import { useMarket } from '@/lib/market-context'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useState } from 'react'
 
@@ -32,7 +31,7 @@ export function CartModal({ open, onClose, onCheckout, isDisabled, disabledMessa
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-40 flex items-end md:items-center justify-center">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-end md:items-center justify-center">
       <Card className="w-full md:w-96 rounded-t-2xl md:rounded-2xl p-4 max-h-[80vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold">Carrito ({cart.length} items)</h2>
@@ -59,7 +58,7 @@ export function CartModal({ open, onClose, onCheckout, isDisabled, disabledMessa
                       <p className="text-sm text-muted-foreground">x{item.quantity}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold">${(item.product.price * item.quantity).toFixed(2)}</span>
+                      <span className="font-bold">$ {Math.round(Number((item.product.price * item.quantity))).toLocaleString('es-AR')}</span>
                       {(item.selectedOptions && Object.keys(item.selectedOptions).length > 0) || item.customerNotes ? (
                         expandedItems.has(item.product_id) ? (
                           <ChevronUp className="w-4 h-4" />
@@ -114,7 +113,7 @@ export function CartModal({ open, onClose, onCheckout, isDisabled, disabledMessa
             <div className="border-t pt-3">
               <div className="flex justify-between mb-3">
                 <span className="font-bold">Total:</span>
-                <span className="text-lg font-bold text-[#0057a5]">${getCartTotal().toFixed(2)}</span>
+                <span className="text-lg font-bold text-[#0057a5]">$ {Math.round(Number(getCartTotal())).toLocaleString('es-AR')}</span>
               </div>
 
               {isDisabled && disabledMessage && (

@@ -61,15 +61,6 @@ export function PWAInstallPrompt() {
     const { outcome } = await deferredPrompt.userChoice
     if (outcome === 'accepted') {
       localStorage.setItem(STORAGE_KEY, 'true')
-      
-      // Request notification permission after install
-      if ('Notification' in window && Notification.permission === 'default') {
-        try {
-          await Notification.requestPermission()
-        } catch (e) {
-          console.log('[PWA] Notification permission request failed:', e)
-        }
-      }
     }
     setDeferredPrompt(null)
     setShowPrompt(false)

@@ -6,8 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useReservation } from '@/lib/reservation-context'
-import { WORKSPACE_PRICES, calculateDuration } from '@/lib/types'
-import { createClient } from '@/lib/supabase/client'
 import { Copy, Upload, ExternalLink, CreditCard } from 'lucide-react'
 
 export function PaymentScreen() {
@@ -18,6 +16,9 @@ export function PaymentScreen() {
     selectedTimeTo,
     selectedWorkspace,
     completeBookingWithPayment,
+    quoteTotal,
+    selectedComboId,
+    depositRequiredFor,
   } = useReservation()
 
   const [paymentMethod, setPaymentMethod] = useState<'transfer' | 'mercadopago' | null>(null)
@@ -25,12 +26,42 @@ export function PaymentScreen() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const duration = selectedTimeFrom && selectedTimeTo ? calculateDuration(selectedTimeFrom, selectedTimeTo) : 0
-  const totalAmount = selectedWorkspace ? Math.round(WORKSPACE_PRICES[selectedWorkspace] * duration) : 0
+  const totalAmount = quoteTotal(selectedWorkspace, selectedTimeFrom, selectedTimeTo, selectedComboId)
   const senaAmount = Math.round(totalAmount * 0.5)
 
   if (currentScreen === 'success') { 
     return <PaymentSuccessScreen /> 
+  }
+
+  // Escritorios sin seña (según Ajustes): se confirma sin pagar y se abona todo en el lugar
+  const noDeposit = !depositRequiredFor(selectedWorkspace)
+  const confirmWithoutDeposit = async () => {
+    setLoading(true)
+    setError('')
+    const result = await completeBookingWithPayment(null)
+    if (result.success) setCurrentScreen('success')
+    else { setError(result.error || 'No se pudo guardar la reserva. Reintentá.'); setLoading(false) }
+  }
+  if (noDeposit) {
+    return (
+      <div className="min-h-screen bg-white p-6 flex flex-col space-y-6 md:max-w-xl md:mx-auto">
+        <div className="text-center space-y-2 pt-4">
+          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Confirmá tu reserva</h2>
+          <p className="text-gray-500 text-sm">Para los escritorios no hace falta seña: pagás todo en el lugar, al irte.</p>
+        </div>
+        <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 text-center">
+          <p className="text-[#0057a5] text-xs font-bold uppercase tracking-wider mb-1">Total a pagar en el lugar</p>
+          <p className="text-4xl font-black text-[#0057a5]">$ {totalAmount.toLocaleString('es-AR')}</p>
+          <p className="text-xs text-gray-500 mt-2">Con el Plan FULL, lo que consumas se descuenta de este valor: es tu saldo a favor para consumo.</p>
+        </div>
+        {error && <p className="text-red-500 text-sm text-center font-bold">{error}</p>}
+        <Button className="w-full h-16 bg-[#0057a5] hover:bg-[#004a8d] text-white text-lg font-extrabold rounded-xl shadow-xl disabled:opacity-50"
+          disabled={loading} onClick={confirmWithoutDeposit}>
+          {loading ? 'GUARDANDO...' : 'CONFIRMAR RESERVA'}
+        </Button>
+        <button onClick={() => setCurrentScreen('time-range')} className="text-sm font-semibold text-gray-500 underline">Volver</button>
+      </div>
+    )
   }
 
   const handleMercadoPago = () => {
@@ -44,16 +75,12 @@ export function PaymentScreen() {
       return
     }
     setLoading(true)
-    try {
-      const supabase = createClient()
-      const fileName = `comprobante-${Date.now()}.png`
-      await supabase.storage.from('comprobantes').upload(fileName, receiptFile)
-      const { data } = supabase.storage.from('comprobantes').getPublicUrl(fileName)
-      
-      const result = await completeBookingWithPayment(data.publicUrl)
-      if (result.success) setCurrentScreen('success')
-    } catch (err: any) {
-      setError('Error al procesar el pago. Reintenta.')
+    setError('')
+    const result = await completeBookingWithPayment(receiptFile)
+    if (result.success) {
+      setCurrentScreen('success')
+    } else {
+      setError(result.error || 'Error al procesar el pago. Reintenta.')
       setLoading(false)
     }
   }
@@ -64,7 +91,7 @@ export function PaymentScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-white p-6 flex flex-col space-y-6">
+    <div className="min-h-screen bg-white p-6 flex flex-col space-y-6 md:max-w-xl md:mx-auto">
       <div className="text-center space-y-2 pt-4">
         <h2 className="text-2xl font-bold text-gray-900 tracking-tight uppercase">Abonar Seña (50%)</h2>
         <p className="text-gray-500 text-sm">Seleccioná tu método de pago preferido</p>
@@ -112,24 +139,24 @@ export function PaymentScreen() {
 
           {paymentMethod === 'transfer' && (
             <Card className="p-5 bg-white border-slate-200 border rounded-xl space-y-3 shadow-sm animate-in fade-in zoom-in-95">
-              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest text-center">Datos para transferir</p>
+              <p className="text-[0.625rem] text-gray-400 font-black uppercase tracking-widest text-center">Datos para transferir</p>
               <div className="flex justify-between items-center bg-slate-50 p-4 rounded-lg border border-slate-100">
                 <div className="text-left">
-                  <p className="text-[10px] text-gray-400 uppercase font-bold">Alias de la cuenta</p>
+                  <p className="text-[0.625rem] text-gray-400 uppercase font-bold">Alias de la cuenta</p>
                   <p className="text-[#0057a5] font-bold text-sm uppercase">C.CTE.MARIJO.GALICIA</p>
                 </div>
                 <Button variant="ghost" size="icon" className="hover:bg-orange-50" onClick={() => copyToClipboard('C.CTE.MARIJO.GALICIA')}>
                   <Copy className="w-5 h-5 text-orange-500" />
                 </Button>
               </div>
-              <p className="text-center text-[11px] text-gray-500 font-bold uppercase">MARIJO S.A.</p>
+              <p className="text-center text-[0.6875rem] text-gray-500 font-bold uppercase">MARIJO S.A.</p>
             </Card>
           )}
         </div>
       </div>
 
       <div className="pt-2">
-        <Input type="file" id="receipt" className="hidden" onChange={(e) => setReceiptFile(e.target.files?.[0] || null)} />
+        <Input type="file" id="receipt" accept="image/*,application/pdf" className="hidden" onChange={(e) => setReceiptFile(e.target.files?.[0] || null)} />
         <label 
           htmlFor="receipt" 
           className={`cursor-pointer flex flex-col items-center justify-center border-2 border-dashed rounded-2xl p-8 transition-all ${receiptFile ? 'border-green-300 bg-green-50' : 'border-slate-200 bg-slate-50'}`}

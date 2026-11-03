@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Check, Clock, ShoppingBag, User, Volume2, VolumeX, AlertCircle } from 'lucide-react'
+import { ShoppingBag, User, AlertCircle } from 'lucide-react'
 
 interface OrderItem {
   product_id: string
@@ -22,7 +22,7 @@ interface Order {
   workspace: string | null
   products: OrderItem[]
   total_price: number
-  status: 'pendiente' | 'preparando' | 'entregado'
+  status: 'pendiente' | 'aceptado' | 'entregado'
   created_at: string
 }
 
@@ -32,7 +32,7 @@ interface OrdersSidebarProps {
   onOrderUpdated?: () => void
 }
 
-export function OrdersSidebar({ reservations, onNewOrder, onOrderUpdated }: OrdersSidebarProps) {
+export function OrdersSidebar({ onNewOrder, onOrderUpdated }: OrdersSidebarProps) {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
@@ -112,10 +112,9 @@ export function OrdersSidebar({ reservations, onNewOrder, onOrderUpdated }: Orde
     return () => clearInterval(interval)
   }, [loadOrders])
 
-  const updateStatus = async (orderId: string, newStatus: 'entregado') => {
+  const updateStatus = async (orderId: string, newStatus: 'aceptado' | 'entregado') => {
     setUpdating(orderId)
     try {
-      console.log('[v0] updateStatus called with orderId:', orderId, 'newStatus:', newStatus)
       
       // Usar la API route que tiene CLAVE_SECRETA_PEDIDOS (bypass RLS)
       const res = await fetch('/api/market/orders', {
@@ -125,7 +124,6 @@ export function OrdersSidebar({ reservations, onNewOrder, onOrderUpdated }: Orde
       })
       
       const responseData = await res.json()
-      console.log('[v0] updateStatus response:', res.status, responseData)
       
       if (!res.ok) {
         console.error('[v0] Error updating order status:', res.status, responseData)
@@ -142,8 +140,10 @@ export function OrdersSidebar({ reservations, onNewOrder, onOrderUpdated }: Orde
     }
   }
 
+  // Tres pasos: llega (pendiente) → las chicas lo aceptan y lo preparan (aceptado) → lo entregan (entregado)
   const pendingOrders = orders.filter(o => o.status === 'pendiente')
-  const otherOrders = orders.filter(o => o.status !== 'pendiente')
+  const preparingOrders = orders.filter(o => o.status === 'aceptado')
+  const otherOrders = orders.filter(o => o.status === 'entregado')
 
   return (
     <div className="relative flex h-full bg-white border-l border-slate-200 shadow-xl" style={{ width: `${sidebarWidth}px` }}>
@@ -161,7 +161,7 @@ export function OrdersSidebar({ reservations, onNewOrder, onOrderUpdated }: Orde
               {pendingOrders.length} Pedido{pendingOrders.length > 1 ? 's' : ''} por atender
             </div>
           ) : (
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Sin pedidos pendientes</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{preparingOrders.length > 0 ? `${preparingOrders.length} en preparación` : 'Sin pedidos pendientes'}</p>
           )}
         </div>
 
@@ -198,17 +198,51 @@ export function OrdersSidebar({ reservations, onNewOrder, onOrderUpdated }: Orde
                     ))}
                     <div className="pt-2 flex items-center justify-between">
                       <p className="text-xs font-black text-slate-800 uppercase">Total: $ {order.total_price.toLocaleString('es-AR')}</p>
-                      <Button 
-                        onClick={() => updateStatus(order.id, 'entregado')}
+                      <Button
+                        onClick={() => updateStatus(order.id, 'aceptado')}
                         disabled={updating === order.id}
-                        className="h-8 bg-green-600 hover:bg-green-700 text-white font-black text-[10px] uppercase rounded-lg px-4"
+                        className="h-9 bg-[#0057a5] hover:bg-[#004a8d] text-white font-black text-[11px] uppercase rounded-lg px-4"
                       >
-                        {updating === order.id ? '...' : 'Aceptar'}
+                        {updating === order.id ? '...' : 'Aceptar y preparar'}
                       </Button>
                     </div>
                   </div>
                 </Card>
               ))}
+
+              {preparingOrders.length > 0 && (
+                <div className="pt-2 space-y-3">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">En preparación</p>
+                  {preparingOrders.map(order => (
+                    <Card key={order.id} className="border-none shadow-sm overflow-hidden ring-1 ring-blue-100">
+                      <div className="bg-[#0057a5] p-2 flex justify-between items-center text-white">
+                        <div className="flex items-center gap-1.5 font-black text-[10px] uppercase">
+                          <User className="w-3 h-3" />
+                          <span>{order.customer_name}</span>
+                        </div>
+                        <span className="text-[9px] font-black bg-white/20 px-1.5 py-0.5 rounded uppercase">{order.workspace}</span>
+                      </div>
+                      <div className="p-3 space-y-2">
+                        {order.products.map((item, idx) => (
+                          <div key={idx} className="text-xs font-bold text-slate-700">
+                            {item.quantity}x {item.name}
+                            {item.customerNotes && <span className="block text-[10px] text-amber-700 font-medium">Nota: {item.customerNotes}</span>}
+                          </div>
+                        ))}
+                        <div className="pt-1 flex justify-end">
+                          <Button
+                            onClick={() => updateStatus(order.id, 'entregado')}
+                            disabled={updating === order.id}
+                            className="h-9 bg-green-600 hover:bg-green-700 text-white font-black text-[11px] uppercase rounded-lg px-4"
+                          >
+                            {updating === order.id ? '...' : 'Entregado'}
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
 
               {otherOrders.length > 0 && (
                 <div className="pt-4 space-y-2">

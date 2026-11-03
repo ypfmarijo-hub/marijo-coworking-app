@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card'
 import { GoogleMap } from '@/components/google-map'
 import { useReservation } from '@/lib/reservation-context'
 import { CONTACT_INFO } from '@/lib/types'
-import { MapPin, Calendar, List, MessageCircle, ShoppingCart } from 'lucide-react'
+import { MapPin, Calendar, List, MessageCircle, ShoppingCart, LayoutGrid } from 'lucide-react'
 
 export function HomeScreen() {
   const { setCurrentScreen } = useReservation()
@@ -14,7 +14,7 @@ export function HomeScreen() {
     <div className="min-h-screen bg-background">
       {/* Header with gas station image */}
       <div className="relative">
-        <div className="h-48 overflow-hidden">
+        <div className="h-48 md:h-72 overflow-hidden">
           <img 
             src="/portada-ypf.jpg"
             alt="Estación de Servicio MARIJO"
@@ -24,7 +24,8 @@ export function HomeScreen() {
       </div>
 
       {/* Content */}
-      <div className="px-4 pt-4">
+      <div className="px-4 pt-4 md:px-8 md:pt-8 md:grid md:grid-cols-2 md:gap-8 md:items-start">
+        <div>
         <Card className="p-6 shadow-lg border-0">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0">
@@ -63,6 +64,15 @@ export function HomeScreen() {
             Mis reservas
           </Button>
 
+          <Button
+            variant="outline"
+            className="w-full h-14 text-base font-medium gap-3 border-2 border-[#0057a5] text-[#0057a5] hover:bg-[#0057a5]/10"
+            onClick={() => setCurrentScreen('pizarra')}
+          >
+            <LayoutGrid className="w-5 h-5" />
+            Pizarra de la sala
+          </Button>
+
           <Button 
             variant="outline"
             className="w-full h-14 text-base font-medium gap-3 border-2 border-[#0057a5] text-[#0057a5] hover:bg-[#0057a5]/10"
@@ -88,8 +98,10 @@ export function HomeScreen() {
           </Button>
         </div>
 
+        </div>
+
         {/* Location */}
-        <Card className="mt-8 p-4 bg-muted/50 border-0">
+        <Card className="mt-8 md:mt-0 p-4 bg-muted/50 border-0">
           <div className="flex items-start gap-3 mb-4">
             <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
               <MapPin className="w-5 h-5 text-primary" />
