@@ -1,14 +1,10 @@
 import type { Metadata, Viewport } from 'next'
-import { Roboto } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { PWAInstallPrompt } from '@/components/pwa-install-prompt'
 import './globals.css'
 
-const roboto = Roboto({ 
-  subsets: ["latin"],
-  weight: ['300', '400', '500', '700'],
-  variable: '--font-roboto'
-});
+// La letra Roboto se carga desde Google Fonts cuando se abre la página (no al armar la app en Vercel),
+// así el armado no depende de poder descargar las fuentes en ese momento.
 
 export const metadata: Metadata = {
   title: 'MARIJO - Fullwork Coworking',
@@ -53,7 +49,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className={`${roboto.variable} font-sans antialiased`} suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" />
+      </head>
+      <body className="font-sans antialiased" suppressHydrationWarning>
         {children}
         <PWAInstallPrompt />
         <Analytics />

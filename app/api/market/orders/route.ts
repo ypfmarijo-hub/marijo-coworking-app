@@ -1,20 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createServiceClient } from '@/lib/supabase/server'
+import { requireStaff } from '@/lib/supabase/staff'
+import { findActiveReservationByPhone } from '@/lib/active-reservation'
+import { pushToPhone, pushToStaff } from '@/lib/push'
 
-// Credenciales para marijo-reservas (la misma base de datos que el resto del sistema)
-const SUPABASE_URL = 'https://coxfxtcpoyssejhnyqyt.supabase.co'
-const SUPABASE_SERVICE_ROLE_KEY = process.env.CLAVE_SECRETA_PEDIDOS!
-
-function getServiceSupabase() {
-  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-}
-
+// GET - Lista de pedidos (solo staff)
 export async function GET(req: NextRequest) {
-  const supabase = getServiceSupabase()
-  const { searchParams } = new URL(req.url)
-  const status = searchParams.get('status')
+  const denied = await requireStaff()
+  if (denied) return denied
 
-  let query = supabase.from('orders').select('*')
+  const supabase = createServiceClient()
+  const status = new URL(req.url).searchParams.get('status')
+
+  // los cafés de regalo que todavía no se pidieron no le aparecen al bar
+  let query = supabase.from('orders').select('*').not('status', 'in', '("regalo_esperando","regalo_guardado")')
   if (status) query = query.eq('status', status)
 
   const { data, error } = await query.order('created_at', { ascending: false })
@@ -22,156 +21,114 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(data)
 }
 
+// POST - El cliente hace un pedido desde su lugar (público, validado por teléfono + reserva en curso)
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { products, total_amount, phone, table_number } = body
+    const { products, phone, table_number } = body
 
-    if (!products || !total_amount || !phone) {
-      return NextResponse.json(
-        { error: 'Faltan campos: products, total_amount, phone' },
-        { status: 400 }
-      )
+    if (!Array.isArray(products) || products.length === 0 || !phone) {
+      return NextResponse.json({ error: 'Faltan campos: products, phone' }, { status: 400 })
+    }
+    if (products.length > 50) {
+      return NextResponse.json({ error: 'Demasiados productos en un pedido' }, { status: 400 })
     }
 
-    const supabase = getServiceSupabase()
-    const cleanPhone = String(phone).replace(/\D/g, '')
+    const supabase = createServiceClient()
 
-    // Vercel corre en UTC; convertimos a hora de Argentina (UTC-3, sin horario de verano)
-    // para que la comparación de horarios de reserva sea correcta.
-    const nowArg = new Date(
-      new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' })
-    )
-    const today = `${nowArg.getFullYear()}-${String(nowArg.getMonth() + 1).padStart(2, '0')}-${String(nowArg.getDate()).padStart(2, '0')}`
-    const currentTimeMinutes = nowArg.getHours() * 60 + nowArg.getMinutes()
-    const TOLERANCE_MINUTES = 15
-
-    // Buscar TODAS las reservas confirmadas de hoy para este teléfono
-    const { data: reservations, error: resError } = await supabase
-      .from('reservations')
-      .select('*')
-      .eq('status', 'confirmed')
-      .eq('date', today)
-      .or(`phone.eq.${cleanPhone},phone.ilike.%${cleanPhone}%`)
-
-    if (resError || !reservations || reservations.length === 0) {
-      return NextResponse.json({ error: 'No se encontró una reserva activa' }, { status: 404 })
-    }
-
-    // Ordenar por hora de inicio y buscar la que está EN CURSO
-    const sortedReservations = reservations.sort((a: any, b: any) => {
-      const aStart = a.time_from || '00:00'
-      const bStart = b.time_from || '00:00'
-      return aStart.localeCompare(bStart)
-    })
-
-    let activeReservation = null
-    let upcomingReservation = null
-
-    for (const res of sortedReservations) {
-      const startTime = res.time_from || '00:00'
-      const endTime = res.time_to || '23:59'
-      const [startHour, startMin] = startTime.split(':').map(Number)
-      const [endHour, endMin] = endTime.split(':').map(Number)
-      const startMinutes = startHour * 60 + startMin
-      const endMinutes = endHour * 60 + endMin
-
-      const isActiveNow = currentTimeMinutes >= startMinutes && currentTimeMinutes <= endMinutes
-      const isUpcoming = currentTimeMinutes >= startMinutes - TOLERANCE_MINUTES && currentTimeMinutes < startMinutes
-      const justEnded = currentTimeMinutes > endMinutes && currentTimeMinutes <= endMinutes + TOLERANCE_MINUTES
-
-      if (isActiveNow) {
-        activeReservation = res
-        break
-      } else if (isUpcoming && !upcomingReservation) {
-        upcomingReservation = res
-      } else if (justEnded && !activeReservation && !upcomingReservation) {
-        upcomingReservation = res
-      }
-    }
-
-    const finalReservation = activeReservation || upcomingReservation
-    if (!finalReservation) {
+    const reservation = await findActiveReservationByPhone(supabase, String(phone))
+    if (!reservation) {
       return NextResponse.json({ error: 'No hay una reserva activa en este horario' }, { status: 404 })
     }
 
-    const customerName = `${finalReservation.first_name || ''} ${finalReservation.last_name || ''}`.trim() || 'Cliente'
+    // Los precios se toman SIEMPRE de la base, nunca de lo que manda el navegador
+    const { data: catalog, error: catalogError } = await supabase
+      .from('products')
+      .select('id, name, price')
+    if (catalogError || !catalog) {
+      return NextResponse.json({ error: 'No se pudo leer el menú' }, { status: 500 })
+    }
+    const byId = new Map(catalog.map((p: any) => [String(p.id), p]))
+    const byName = new Map(catalog.map((p: any) => [String(p.name), p]))
 
-    // Construir items con detalle completo
-    const itemsData = (products as any[]).map((p: any) => ({
-      name: p.name,
-      price: p.price,
-      quantity: p.quantity,
-      subtotal: p.subtotal ?? p.price * p.quantity,
-      selectedOptions: p.selectedOptions || {},
-      customerNotes: p.customerNotes || null,
-    }))
+    const itemsData = []
+    for (const p of products as any[]) {
+      const product = (p.product_id && byId.get(String(p.product_id))) || byName.get(String(p.name))
+      const quantity = Math.floor(Number(p.quantity))
+      if (!product) {
+        return NextResponse.json({ error: `El producto "${p.name}" ya no está en el menú` }, { status: 400 })
+      }
+      if (!Number.isFinite(quantity) || quantity < 1 || quantity > 99) {
+        return NextResponse.json({ error: `Cantidad inválida para "${product.name}"` }, { status: 400 })
+      }
+      const price = Number(product.price)
+      itemsData.push({
+        name: product.name,
+        price,
+        quantity,
+        subtotal: price * quantity,
+        selectedOptions: p.selectedOptions && typeof p.selectedOptions === 'object' ? p.selectedOptions : {},
+        customerNotes: typeof p.customerNotes === 'string' ? p.customerNotes.slice(0, 300) : null,
+      })
+    }
+    const totalAmount = itemsData.reduce((acc, i) => acc + i.subtotal, 0)
+
+    const customerName =
+      `${reservation.first_name || ''} ${reservation.last_name || ''}`.trim() || 'Cliente'
 
     const { data, error } = await supabase
       .from('orders')
       .insert({
         customer_name: customerName,
-        table_number: table_number || null,
-        total_amount: Number(total_amount),
+        table_number: typeof table_number === 'string' ? table_number.slice(0, 100) : null,
+        total_amount: totalAmount,
         status: 'pendiente',
-        reservation_id: finalReservation.id,
+        reservation_id: reservation.id,
         items: itemsData,
       })
       .select()
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    await pushToStaff(supabase, { title: `Nuevo pedido · ${table_number || customerName}`,
+      body: `${customerName}: ${itemsData.map((i) => `${i.quantity} × ${i.name}`).join(', ')}`, tag: 'pedido' })
     return NextResponse.json({ success: true, data: data[0] }, { status: 201 })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
 
+// PATCH - Cambiar estado de un pedido (solo staff)
 export async function PATCH(req: NextRequest) {
+  const denied = await requireStaff()
+  if (denied) return denied
+
   try {
-    const body = await req.json()
-    const { order_id, status } = body
-    
-    console.log('[PATCH /market/orders] Received:', { order_id, status })
-    
-    if (!order_id || !status) {
-      return NextResponse.json({ error: 'order_id y status son requeridos' }, { status: 400 })
+    const { order_id, status } = await req.json()
+    if (!order_id || !['pendiente', 'aceptado', 'entregado'].includes(status)) {
+      return NextResponse.json({ error: 'order_id y un estado válido son requeridos' }, { status: 400 })
     }
 
-    const supabase = getServiceSupabase()
-    
-    // Verificar que la orden existe primero
-    const { data: existingOrder, error: findError } = await supabase
-      .from('orders')
-      .select('id, status')
-      .eq('id', order_id)
-      .maybeSingle()
-    
-    console.log('[PATCH /market/orders] Found order:', existingOrder, 'error:', findError)
-    
-    if (findError || !existingOrder) {
-      console.error('[PATCH /market/orders] Order not found:', order_id)
-      return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
-    }
-    
+    const supabase = createServiceClient()
     const { data, error } = await supabase
       .from('orders')
       .update({ status })
       .eq('id', order_id)
       .select()
 
-    console.log('[PATCH /market/orders] Update result:', { data, error })
-
-    if (error) {
-      console.error('[PATCH /market/orders] Update error:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!data || data.length === 0) {
+      return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
     }
-    
+    // Aviso al celular del cliente (si activó los avisos en la pizarra)
+    const order = data[0] as any
+    if (order.reservation_id && status !== 'pendiente') {
+      const { data: r } = await supabase.from('reservations').select('phone').eq('id', order.reservation_id).maybeSingle()
+      if (r?.phone) await pushToPhone(supabase, r.phone, status === 'aceptado'
+        ? { title: 'Tu pedido está en preparación', body: 'Ya lo están preparando.', tag: 'pedido', url: '/?pantalla=bar' }
+        : { title: 'Tu pedido fue entregado', body: '¡Que lo disfrutes!', tag: 'pedido', url: '/?pantalla=bar' })
+    }
     return NextResponse.json({ success: true, data })
   } catch (e: any) {
-    console.error('[PATCH /market/orders] Critical error:', e)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }

@@ -124,3 +124,17 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* App del cliente en la compu: todo un poco más grande (en el celular queda igual) */
+@media (min-width: 1024px) {
+  html.fw-cliente { font-size: 18px; }
+}
+@media (min-width: 1280px) {
+  html.fw-cliente { font-size: 19px; }
+}
+@media (min-width: 1536px) {
+  html.fw-cliente { font-size: 20px; }
+}
+@media (min-width: 1800px) {
+  html.fw-cliente { font-size: 21px; }
+}

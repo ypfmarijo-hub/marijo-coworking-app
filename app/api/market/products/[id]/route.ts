@@ -1,18 +1,26 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
+import { requireStaff } from '@/lib/supabase/staff'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await requireStaff()
+  if (denied) return denied
+
   try {
     const { id } = await params
     const body = await request.json()
-    const supabase = createClient()
+    const supabase = createServiceClient()
     
-    // Solo actualizamos los campos básicos para evitar errores de validación
+    // Antes solo se guardaban nombre, precio, categoría y foto: las opciones y las
+    // aclaraciones editadas se perdían. Ahora se guardan igual que al crear el producto.
     const updateData = {
       name: body.name,
       price: body.price,
       category: body.category,
       image_url: body.image_url,
+      options: body.options ?? null,
+      notes_label: body.notes_label ?? null,
+      max_notes_chars: body.max_notes_chars ?? null,
       updated_at: new Date().toISOString()
     }
 
@@ -34,9 +42,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await requireStaff()
+  if (denied) return denied
+
   const { id } = await params
-  const supabase = createClient()
+  const supabase = createServiceClient()
   const { error } = await supabase.from('products').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })

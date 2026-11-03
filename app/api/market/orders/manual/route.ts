@@ -1,18 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-// Credenciales para marijo-reservas (la misma base de datos que el resto del sistema)
-const SUPABASE_URL = 'https://coxfxtcpoyssejhnyqyt.supabase.co'
-const SUPABASE_SERVICE_ROLE_KEY = process.env.CLAVE_SECRETA_PEDIDOS!
-
-function getServiceSupabase() {
-  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-}
+import { createServiceClient } from '@/lib/supabase/server'
+import { requireStaff } from '@/lib/supabase/staff'
 
 // POST - El staff carga manualmente un consumo (ej: pedido por WhatsApp) directo a una reserva.
 // A diferencia de /api/market/orders, acá no se busca la reserva por teléfono/horario:
 // el staff ya sabe exactamente a qué reserva pertenece, así que reservation_id viene fijo en el body.
 export async function POST(req: NextRequest) {
+  const denied = await requireStaff()
+  if (denied) return denied
+
   try {
     const body = await req.json()
     const { reservation_id, customer_name, items } = body
@@ -35,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     const total_amount = itemsData.reduce((acc: number, i: any) => acc + i.subtotal, 0)
 
-    const supabase = getServiceSupabase()
+    const supabase = createServiceClient()
 
     // Confirmar que la reserva exista antes de insertar
     const { data: reservation, error: resError } = await supabase

@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { WorkspaceType, WORKSPACE_LABELS, timeRangesOverlap } from '@/lib/types'
+import { WorkspaceType, timeRangesOverlap } from '@/lib/types'
 import { RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -61,13 +60,16 @@ export default function DisponibilidadPage() {
 
   const buildGrid = useCallback(async () => {
     setLoading(true)
-    const supabase = createClient()
-
-    const { data, error } = await supabase
-      .from('reservations')
-      .select('workspace, time_from, time_to, status')
-      .eq('date', todayISO())
-      .eq('status', 'confirmed')
+    let data: { workspace: string; time_from: string; time_to: string; status: string }[] | null = null
+    let error: unknown = null
+    try {
+      const today = todayISO()
+      const res = await fetch(`/api/public/occupancy?from=${today}&to=${today}`, { cache: 'no-store' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      data = (await res.json()).filter((r: { status: string }) => r.status === 'confirmed')
+    } catch (e) {
+      error = e
+    }
 
     // Initialise all slots as libre
     const g: AvailabilityGrid = {} as AvailabilityGrid
@@ -100,19 +102,12 @@ export default function DisponibilidadPage() {
   useEffect(() => {
     buildGrid()
 
-    // Auto-refresh every 60 seconds
-    const timer = setInterval(buildGrid, 60_000)
-
-    // Real-time subscription
-    const supabase = createClient()
-    const channel = supabase
-      .channel('disponibilidad_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, buildGrid)
-      .subscribe()
+    // Actualización automática cada 30 segundos
+    // (la suscripción en tiempo real a la tabla quedó solo para el staff, porque expone datos personales)
+    const timer = setInterval(buildGrid, 30_000)
 
     return () => {
       clearInterval(timer)
-      supabase.removeChannel(channel)
     }
   }, [buildGrid])
 
